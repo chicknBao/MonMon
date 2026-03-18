@@ -1,6 +1,15 @@
--- TimescaleDB schema for Monad Liquidity Depth dashboard (MVP)
+-- TimescaleDB (optional) schema for Monad Liquidity Depth dashboard (MVP)
+-- Designed to run on both TimescaleDB and plain Postgres.
 
-CREATE EXTENSION IF NOT EXISTS timescaledb;
+DO $$
+BEGIN
+  CREATE EXTENSION IF NOT EXISTS timescaledb;
+EXCEPTION
+  WHEN OTHERS THEN
+    -- Allow the schema to load on Postgres instances without Timescale.
+    -- Any create_hypertable calls below will be skipped if unavailable.
+    NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS dexes (
   name TEXT PRIMARY KEY
@@ -60,10 +69,15 @@ CREATE INDEX IF NOT EXISTS idx_pool_snapshots_dex_ts ON pool_snapshots (dex, ts 
 CREATE INDEX IF NOT EXISTS idx_token_depth_snapshots_dex_token_ts ON token_depth_snapshots (dex, token_address, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_token_top_n_dex_ts ON token_top_n (dex, ts DESC);
 
--- Convert to hypertables (idempotent).
-SELECT create_hypertable('pool_snapshots', 'ts', if_not_exists => TRUE);
-SELECT create_hypertable('token_depth_snapshots', 'ts', if_not_exists => TRUE);
-SELECT create_hypertable('token_top_n', 'ts', if_not_exists => TRUE);
+-- Convert to hypertables (idempotent) when TimescaleDB is available.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'create_hypertable') THEN
+    PERFORM create_hypertable('pool_snapshots', 'ts', if_not_exists => TRUE);
+    PERFORM create_hypertable('token_depth_snapshots', 'ts', if_not_exists => TRUE);
+    PERFORM create_hypertable('token_top_n', 'ts', if_not_exists => TRUE);
+  END IF;
+END $$;
 
 -- Pre-seed DEX names so adapters can insert without extra migrations.
 INSERT INTO dexes(name)

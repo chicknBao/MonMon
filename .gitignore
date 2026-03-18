@@ -12,3 +12,6 @@ coverage
 *.sqlite
 docker-compose.override.yml
 
+# TypeScript build artifacts
+*.tsbuildinfo
+

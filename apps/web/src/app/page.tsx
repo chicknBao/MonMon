@@ -29,9 +29,6 @@ type SeriesPoint = {
 };
 
 export default function Page() {
-  const apiBaseUrl =
-    process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
-
   const [tokens, setTokens] = useState<TopToken[]>([]);
   const [dex, setDex] = useState<string>("uniswap_v3");
   const [bandBps, setBandBps] = useState<number>(100);
@@ -42,9 +39,7 @@ export default function Page() {
   const dexOptions = ["uniswap_v3", "curve", "balancer", "lfj"];
 
   useEffect(() => {
-    fetch(
-      `${apiBaseUrl}/api/top-tokens?dex=${encodeURIComponent(dex)}&bandBps=${bandBps}&limit=50`,
-    )
+    fetch(`/api/top-tokens?dex=${encodeURIComponent(dex)}&bandBps=${bandBps}&limit=50`)
       .then((r) => r.json())
       .then((data: unknown) => {
         const parsed = data as { tokens?: TopToken[] };
@@ -65,7 +60,7 @@ export default function Page() {
     }
 
     fetch(
-      `${apiBaseUrl}/api/token-series?dex=${encodeURIComponent(
+      `/api/token-series?dex=${encodeURIComponent(
         dex,
       )}&tokenAddress=${encodeURIComponent(selectedToken)}&bandBps=${bandBps}&limit=200`,
     )
