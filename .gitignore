@@ -1,0 +1,14 @@
+node_modules
+dist
+.next
+coverage
+.DS_Store
+
+# env files
+.env
+.env.*
+
+# local/ephemeral docker/db data
+*.sqlite
+docker-compose.override.yml
+

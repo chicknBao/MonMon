@@ -1,0 +1,40 @@
+{
+  "name": "monmon",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "typecheck": "tsc -b --pretty false",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "build": "npm -ws run build",
+    "dev": "concurrently -k \"npm -w apps/api run dev\" \"npm -w apps/web run dev\" \"npm -w apps/indexer run dev\"",
+    "seed": "npm -w apps/indexer run seed"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^20.11.30",
+    "@types/node-cron": "^3.0.11",
+    "@types/pg": "^8.18.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "concurrently": "^9.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.0"
+  },
+  "eslintConfig": {
+    "root": true
+  }
+}

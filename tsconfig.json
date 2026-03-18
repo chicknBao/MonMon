@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "apps/api" },
+    { "path": "apps/web" },
+    { "path": "apps/indexer" },
+    { "path": "packages/shared" }
+  ]
+}
+
