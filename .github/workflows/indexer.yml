@@ -35,5 +35,10 @@ jobs:
           MONAD_CHAIN_ID: "143"
           # Ensure indexer runs once and exits in CI
           SNAPSHOT_CRON_SCHEDULE: ""
+          # Keep PoC runs fast on free tiers
+          DISCOVERY_LOOKBACK_BLOCKS: "50000"
+          DISCOVERY_MAX_POOLS: "120"
+          SNAPSHOT_BATCH_SIZE: "25"
+          BAND_BPS_LIST: "50,100,200"
         run: npm -w apps/indexer run start
 
