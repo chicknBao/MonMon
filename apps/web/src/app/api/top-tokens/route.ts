@@ -1,8 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { getDb } from "../../../lib/db";
 
 const DEXES = ["uniswap_v3", "curve", "balancer", "lfj"] as const;
 type DexName = (typeof DEXES)[number] | "all";
+
+export const dynamic = "force-dynamic";
 
 function parseDex(input: unknown): DexName {
   const s = String(input ?? "uniswap_v3");
@@ -23,12 +25,12 @@ function parseLimit(input: unknown): number {
   return Math.min(200, Math.max(1, Math.floor(n)));
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
-    const url = new URL(req.url);
-    const dex = parseDex(url.searchParams.get("dex"));
-    const bandBps = parseBandBps(url.searchParams.get("bandBps"));
-    const limit = parseLimit(url.searchParams.get("limit"));
+    const searchParams = req.nextUrl.searchParams;
+    const dex = parseDex(searchParams.get("dex"));
+    const bandBps = parseBandBps(searchParams.get("bandBps"));
+    const limit = parseLimit(searchParams.get("limit"));
 
     const dexList = dex === "all" ? DEXES : [dex];
     const db = getDb();

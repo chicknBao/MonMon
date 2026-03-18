@@ -5,13 +5,38 @@
     "composite": true,
     "jsx": "preserve",
     "moduleResolution": "Bundler",
-    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ES2022"
+    ],
     "baseUrl": ".",
     "paths": {
-      "@monmon/shared": ["../../packages/shared/src"]
-    }
+      "@monmon/shared": [
+        "../../packages/shared/src"
+      ]
+    },
+    "allowJs": true,
+    "incremental": true,
+    "isolatedModules": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
   },
-  "include": ["next-env.d.ts", "src/**/*.ts", "src/**/*.tsx"],
-  "references": [{ "path": "../../packages/shared" }]
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../../packages/shared"
+    }
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }
-
