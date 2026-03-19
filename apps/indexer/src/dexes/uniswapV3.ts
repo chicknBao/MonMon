@@ -214,17 +214,25 @@ export async function runUniswapV3DepthSnapshot(params: { env: Env; db: Pool }) 
     toBytes("PoolCreated(address,address,uint24,int24,address)"),
   );
 
-  const logs = (await publicClient.request({
-    method: "eth_getLogs",
-    params: [
-      {
-        address: UNISWAP_V3_FACTORY,
-        fromBlock: toHex(fromBlock),
-        toBlock: toHex(toBlock),
-        topics: [poolCreatedTopic0],
-      },
-    ],
-  })) as Array<{ data: string; topics: string[] }>;
+  // Some Monad free-tier RPC providers reject large `eth_getLogs` ranges
+  // ("ranges over 10000 blocks are not supported on freetier").
+  const MAX_LOG_BLOCK_RANGE = 10_000n;
+  const logs: Array<{ data: string; topics: string[] }> = [];
+  for (let start = fromBlock; start <= toBlock; start += MAX_LOG_BLOCK_RANGE) {
+    const end = start + MAX_LOG_BLOCK_RANGE - 1n > toBlock ? toBlock : start + MAX_LOG_BLOCK_RANGE - 1n;
+    const chunkLogs = (await publicClient.request({
+      method: "eth_getLogs",
+      params: [
+        {
+          address: UNISWAP_V3_FACTORY,
+          fromBlock: toHex(start),
+          toBlock: toHex(end),
+          topics: [poolCreatedTopic0],
+        },
+      ],
+    })) as Array<{ data: string; topics: string[] }>;
+    logs.push(...chunkLogs);
+  }
 
   const pools = new Map<string, { poolAddress: string; token0: string; token1: string }>();
   for (const log of logs) {

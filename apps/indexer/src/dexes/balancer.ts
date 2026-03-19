@@ -99,17 +99,25 @@ export async function runBalancerDepthSnapshot(params: { env: Env; db: Pool }) {
 
   const poolRegisteredTopic0 = keccak256(toBytes("PoolRegistered(bytes32,address,uint8)"));
 
-  const logs = (await publicClient.request({
-    method: "eth_getLogs",
-    params: [
-      {
-        address: BALANCER_VAULT_V2,
-        fromBlock: toHex(fromBlock),
-        toBlock: toHex(toBlock),
-        topics: [poolRegisteredTopic0],
-      },
-    ],
-  })) as Array<{ data: string; topics: string[] }>;
+  // Some Monad free-tier RPC providers reject large `eth_getLogs` ranges
+  // ("ranges over 10000 blocks are not supported on freetier").
+  const MAX_LOG_BLOCK_RANGE = 10_000n;
+  const logs: Array<{ data: string; topics: string[] }> = [];
+  for (let start = fromBlock; start <= toBlock; start += MAX_LOG_BLOCK_RANGE) {
+    const end = start + MAX_LOG_BLOCK_RANGE - 1n > toBlock ? toBlock : start + MAX_LOG_BLOCK_RANGE - 1n;
+    const chunkLogs = (await publicClient.request({
+      method: "eth_getLogs",
+      params: [
+        {
+          address: BALANCER_VAULT_V2,
+          fromBlock: toHex(start),
+          toBlock: toHex(end),
+          topics: [poolRegisteredTopic0],
+        },
+      ],
+    })) as Array<{ data: string; topics: string[] }>;
+    logs.push(...chunkLogs);
+  }
 
   const pools = new Map<string, { poolId: string; poolAddress: string; specialization: number }>();
   for (const log of logs) {
