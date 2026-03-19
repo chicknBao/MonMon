@@ -1,9 +1,9 @@
-import { uniswapV3BandAmountsRaw } from "./depth.js";
+import { uniswapV3BandAmountsRaw } from "./depth";
 import {
   integerSqrt,
   uniswapV3DirectionalMaxOutputRaw,
-} from "./depth.js";
-import { getSqrtRatioAtTickX96 } from "./uniswapV3TickMath.js";
+} from "./depth";
+import { getSqrtRatioAtTickX96 } from "./uniswapV3TickMath";
 
 describe("uniswapV3BandAmountsRaw", () => {
   it("returns 0 for bandBps=0", () => {
