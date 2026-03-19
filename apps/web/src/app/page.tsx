@@ -38,6 +38,26 @@ export default function Page() {
   const bandOptions = [50, 100, 200];
   const dexOptions = ["uniswap_v3", "curve", "balancer", "lfj"];
 
+  function formatDepthNumber(value: string | number) {
+    const raw = typeof value === "number" ? String(value) : value;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return raw;
+    const abs = Math.abs(n);
+    if (abs === 0) return "0";
+
+    // Keep it readable for both "very small" and "very large" values.
+    if (abs >= 1e9 || abs < 1e-6) {
+      // 3 significant digits in scientific notation.
+      const exp = n.toExponential(2); // e.g. 1.42e+18
+      return exp.replace("e+", "e");
+    }
+
+    // Otherwise use commas with up to 6 decimals.
+    return new Intl.NumberFormat("en-US", {
+      maximumFractionDigits: 6,
+    }).format(n);
+  }
+
   useEffect(() => {
     fetch(`/api/top-tokens?dex=${encodeURIComponent(dex)}&bandBps=${bandBps}&limit=50`)
       .then((r) => r.json())
@@ -147,8 +167,8 @@ export default function Page() {
                   </span>
                 </button>
               </td>
-              <td style={{ padding: 8, textAlign: "right" }}>{t.depthSimple}</td>
-              <td style={{ padding: 8, textAlign: "right" }}>{t.depthBand}</td>
+              <td style={{ padding: 8, textAlign: "right" }}>{formatDepthNumber(t.depthSimple)}</td>
+              <td style={{ padding: 8, textAlign: "right" }}>{formatDepthNumber(t.depthBand)}</td>
             </tr>
           ))}
         </tbody>
@@ -171,8 +191,11 @@ export default function Page() {
               >
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="ts" minTickGap={20} />
-                <YAxis />
-                <Tooltip />
+                <YAxis tickFormatter={(v) => formatDepthNumber(v)} />
+                <Tooltip
+                  formatter={(v: number | string, name: string) => [formatDepthNumber(v), name]}
+                  labelFormatter={(label) => label}
+                />
                 <Line type="monotone" dataKey="depthSimple" stroke="#8884d8" dot={false} name="DepthSimple" />
                 <Line type="monotone" dataKey="depthBand" stroke="#82ca9d" dot={false} name="DepthBand" />
               </LineChart>
