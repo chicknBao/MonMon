@@ -100,6 +100,6 @@ END $$;
 
 -- Pre-seed DEX names so adapters can insert without extra migrations.
 INSERT INTO dexes(name)
-VALUES ('uniswap_v3'), ('curve'), ('balancer'), ('lfj')
+VALUES ('uniswap_v3'), ('uniswap_v4'), ('curve'), ('balancer'), ('lfj')
 ON CONFLICT (name) DO NOTHING;
 

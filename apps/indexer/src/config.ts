@@ -15,6 +15,12 @@ export const envSchema = z.object({
   BAND_BPS_LIST: z.string().default("25,50,100,200,500"),
   DEPTH_SIMPLE_BAND_BPS: z.coerce.number().int().positive().default(100),
 
+  // Uniswap v4 (PoC)
+  // PoolIds are the bytes32 Uniswap v4 poolIds (not addresses).
+  UNISWAP_V4_POOL_MANAGER: z.string().optional(),
+  UNISWAP_V4_STATE_VIEW: z.string().optional(),
+  UNISWAP_V4_POOL_IDS: z.string().optional(),
+
   // Snapshot scheduling (optional). If unset, indexer runs once and exits.
   SNAPSHOT_CRON_SCHEDULE: z.string().optional(),
   SNAPSHOT_TIMEZONE: z.string().optional().default("UTC"),

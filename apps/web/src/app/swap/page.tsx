@@ -9,11 +9,11 @@ const AUSD = "0x00000000efe302beaa2b3e6e1b18d08d69a9012a";
 const tokenInOptions = [
   { address: WMON, symbol: "WMON", decimalsHint: 18 },
   { address: USDC, symbol: "USDC", decimalsHint: 6 },
-  { address: AUSD, symbol: "AUSD", decimalsHint: 18 },
+  { address: AUSD, symbol: "AUSD", decimalsHint: 6 },
 ];
 
 const bandOptions = [25, 50, 100, 200, 500];
-const dexOptions = ["uniswap_v3", "curve", "balancer", "lfj", "all"] as const;
+const dexOptions = ["uniswap_v3", "uniswap_v4", "curve", "balancer", "lfj", "all"] as const;
 
 type TotalRow = {
   tokenOut: string;

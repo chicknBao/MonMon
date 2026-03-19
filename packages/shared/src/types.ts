@@ -1,4 +1,4 @@
-export type DexName = "uniswap_v3" | "curve" | "balancer" | "lfj";
+export type DexName = "uniswap_v3" | "uniswap_v4" | "curve" | "balancer" | "lfj";
 
 export type TokenDepthSnapshot = {
   timestamp: string; // ISO

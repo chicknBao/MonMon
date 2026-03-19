@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getDb } from "../../../lib/db";
 
-const DEXES = ["uniswap_v3", "curve", "balancer", "lfj"] as const;
+const DEXES = ["uniswap_v3", "uniswap_v4", "curve", "balancer", "lfj"] as const;
 type DexName = (typeof DEXES)[number] | "all";
 
 export const dynamic = "force-dynamic";

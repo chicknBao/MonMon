@@ -33,6 +33,10 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           MONAD_RPC_URL: ${{ secrets.MONAD_RPC_URL }}
           MONAD_CHAIN_ID: "143"
+          # Uniswap v4 PoC pools (poolIds)
+          UNISWAP_V4_POOL_MANAGER: "0x188d586ddcf52439676ca21a244753fa19f9ea8e"
+          UNISWAP_V4_STATE_VIEW: "0x77395f3b2e73ae90843717371294fa97cc419d64"
+          UNISWAP_V4_POOL_IDS: "0x18a9fc874581f3ba12b7898f80a683c66fd5877fd74b26a85ba9a3a79c549954,0xadaf30776f551bccdfb307c3fd8cdec198ca9a852434c8022ee32d1ccedd8219"
           # Ensure indexer runs once and exits in CI
           SNAPSHOT_CRON_SCHEDULE: ""
           # Keep PoC runs fast on free tiers
