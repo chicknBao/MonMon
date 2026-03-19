@@ -206,7 +206,7 @@ export async function runUniswapV4DepthSnapshot(params: { env: Env; db: Pool }) 
 
     // Retry with progressively larger lookback windows until we find the Initialize event.
     // (Pool creation can be older than DISCOVERY_LOOKBACK_BLOCKS.)
-    for (let attempt = 0; attempt < 4; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       const multiplier = 10n ** BigInt(attempt); // 1x, 10x, 100x, 1000x
       const lookback = baseLookback * multiplier;
       const fromBlock = latestBlock > lookback ? latestBlock - lookback : 0n;
