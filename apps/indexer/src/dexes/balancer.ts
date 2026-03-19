@@ -101,7 +101,7 @@ export async function runBalancerDepthSnapshot(params: { env: Env; db: Pool }) {
 
   // Some Monad free-tier RPC providers reject large `eth_getLogs` ranges
   // ("ranges over 10000 blocks are not supported on freetier").
-  const MAX_LOG_BLOCK_RANGE = 10_000n;
+  const MAX_LOG_BLOCK_RANGE = 5_000n;
   const logs: Array<{ data: string; topics: string[] }> = [];
   for (let start = fromBlock; start <= toBlock; start += MAX_LOG_BLOCK_RANGE) {
     const end = start + MAX_LOG_BLOCK_RANGE - 1n > toBlock ? toBlock : start + MAX_LOG_BLOCK_RANGE - 1n;
