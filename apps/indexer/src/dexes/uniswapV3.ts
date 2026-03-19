@@ -1,7 +1,17 @@
 import type { PoolSnapshot, TokenDepthSnapshot } from "@monmon/shared";
 import { uniswapV3BandAmountsRaw, formatUnits } from "@monmon/shared";
 import type { Pool } from "pg";
-import { createPublicClient, decodeEventLog, http, toBytes, toHex, keccak256, defineChain } from "viem";
+import {
+  createPublicClient,
+  decodeEventLog,
+  http,
+  toBytes,
+  toHex,
+  keccak256,
+  defineChain,
+  encodeAbiParameters,
+  getCreate2Address,
+} from "viem";
 
 import { upsertPool, upsertToken, type PoolMeta, type TokenMeta } from "../repositories/catalog.js";
 import { upsertPoolSnapshot, upsertTokenDepthSnapshot } from "../repositories/snapshots.js";
@@ -82,6 +92,11 @@ const erc20Abi = [
 const Q192 = 2n ** 192n;
 const SCALE_1E18 = 10n ** 18n;
 
+// Canonical Uniswap v3 pool init code hash used for CREATE2 pool address computation.
+// Uniswap docs: https://docs.uniswap.org/contracts/v3/reference/periphery/test/PoolAddressTest
+const UNISWAP_V3_POOL_INIT_CODE_HASH =
+  "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54";
+
 const STABLE_TOKENS_USD_1: Record<
   string,
   { symbol: string; decimals: number }
@@ -94,20 +109,6 @@ const STABLE_TOKENS_USD_1: Record<
 
 /** Wrapped MON — used as PoC $1 quote when no stable leg exists. */
 const WMON = "0x3bd359c1119da7da1d913d1c4d2b7c461115433a";
-
-const uniswapV3FactoryGetPoolAbi = [
-  {
-    type: "function",
-    name: "getPool",
-    stateMutability: "view",
-    inputs: [
-      { name: "tokenA", type: "address" },
-      { name: "tokenB", type: "address" },
-      { name: "fee", type: "uint24" },
-    ],
-    outputs: [{ name: "pool", type: "address" }],
-  },
-] as const;
 
 function isWmon(addr: string) {
   return normalizeAddress(addr) === WMON;
@@ -249,7 +250,9 @@ export async function runUniswapV3DepthSnapshot(params: { env: Env; db: Pool }) 
     if (pools.size >= env.DISCOVERY_MAX_POOLS) break;
   }
 
-  // Always try WMON / major quote pools via factory (often missed if created outside lookback window).
+  // Always try WMON / major quote pools (often missed if created outside lookback window).
+  // Seed pools deterministically via Uniswap v3 CREATE2, so we don't need `factory.getPool()` eth_call
+  // (your free-tier RPC rejects those).
   const quoteTokens = [
     "0x754704bc059f8c67012fed69bc8a327a5aafb603", // USDC
     "0x00000000efe302beaa2b3e6e1b18d08d69a9012a", // AUSD
@@ -260,25 +263,25 @@ export async function runUniswapV3DepthSnapshot(params: { env: Env; db: Pool }) 
     const t1 = WMON < other ? other : WMON;
     for (const fee of feeTiers) {
       if (pools.size >= env.DISCOVERY_MAX_POOLS) break;
-      const poolAddr = await publicClient.readContract({
-        address: UNISWAP_V3_FACTORY as `0x${string}`,
-        abi: uniswapV3FactoryGetPoolAbi,
-        functionName: "getPool",
-        args: [t0 as `0x${string}`, t1 as `0x${string}`, fee],
-      }).catch((err) => {
-        console.warn("uniswapV3 seed getPool failed (skipping)", { fee, t0, t1, error: String(err) });
-        return null;
+      const salt = keccak256(
+        encodeAbiParameters(
+          [{ type: "address" }, { type: "address" }, { type: "uint24" }],
+          [t0 as `0x${string}`, t1 as `0x${string}`, fee],
+        ),
+      );
+      const predictedPoolAddress = getCreate2Address({
+        from: UNISWAP_V3_FACTORY as `0x${string}`,
+        salt,
+        bytecodeHash: UNISWAP_V3_POOL_INIT_CODE_HASH as `0x${string}`,
       });
-
-      if (!poolAddr) continue;
-      const p = normalizeAddress(String(poolAddr));
+      const p = normalizeAddress(String(predictedPoolAddress));
       if (p !== "0x0000000000000000000000000000000000000000" && !pools.has(p)) {
         pools.set(p, { poolAddress: p, token0: t0, token1: t1 });
       }
     }
   }
 
-  console.log(`Uniswap v3 discovered ${pools.size} pools (logs + WMON seed)`);
+  console.log(`Uniswap v3 discovered ${pools.size} pools (logs + WMON seed via CREATE2)`);
 
   const nowIso = new Date().toISOString();
 
