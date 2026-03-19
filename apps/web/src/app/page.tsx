@@ -45,17 +45,26 @@ export default function Page() {
     const abs = Math.abs(n);
     if (abs === 0) return "0";
 
-    // Keep it readable for both "very small" and "very large" values.
-    if (abs >= 1e9 || abs < 1e-6) {
-      // 3 significant digits in scientific notation.
-      const exp = n.toExponential(2); // e.g. 1.42e+18
-      return exp.replace("e+", "e");
+    // Human-friendly compact notation (k/m/b), no scientific "e".
+    if (abs >= 1e3) {
+      const formatted = new Intl.NumberFormat("en-US", {
+        notation: "compact",
+        maximumFractionDigits: 2,
+        compactDisplay: "short",
+      }).format(n);
+      return formatted.replace(/([KMBT])$/, (m, p1) => ` ${String(p1).toLowerCase()}`.trim());
     }
 
-    // Otherwise use commas with up to 6 decimals.
-    return new Intl.NumberFormat("en-US", {
-      maximumFractionDigits: 6,
-    }).format(n);
+    // Small numbers: show decimals with trimming (up to a reasonable cap).
+    if (abs < 1e-6) {
+      const cap = "0.000001";
+      return n < 0 ? `-${cap}`.replace("-", "-") : `<${cap}`;
+    }
+
+    const maxFractionDigits = abs >= 1 ? 6 : abs >= 0.1 ? 6 : abs >= 0.01 ? 7 : abs >= 0.001 ? 8 : 9;
+    const formatted = new Intl.NumberFormat("en-US", { maximumFractionDigits: maxFractionDigits }).format(n);
+    // Trim trailing zeros/decimal point.
+    return formatted.replace(/(\.\d*?[1-9])0+$/g, "$1").replace(/\.0+$/g, "");
   }
 
   useEffect(() => {
