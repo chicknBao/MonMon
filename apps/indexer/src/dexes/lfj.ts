@@ -79,7 +79,8 @@ const STABLE_TOKENS_USD_1: Record<
 > = {
   "0x754704bc059f8c67012fed69bc8a327a5aafb603": { symbol: "USDC", decimals: 6 },
   "0xe7cd86e13ac4309349f30b3435a9d337750fc82d": { symbol: "USDT", decimals: 6 },
-  "0x00000000efe302beaa2b3e6e1b18d08d69a9012a": { symbol: "AUSD", decimals: 18 },
+  // AUSD has 6 decimals onchain.
+  "0x00000000efe302beaa2b3e6e1b18d08d69a9012a": { symbol: "AUSD", decimals: 6 },
 };
 
 function normalizeAddress(addr: string) {
