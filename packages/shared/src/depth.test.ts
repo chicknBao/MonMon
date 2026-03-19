@@ -3,6 +3,7 @@ import {
   integerSqrt,
   uniswapV3DirectionalMaxOutputRaw,
 } from "./depth.js";
+import { getSqrtRatioAtTickX96 } from "./uniswapV3TickMath.js";
 
 describe("uniswapV3BandAmountsRaw", () => {
   it("returns 0 for bandBps=0", () => {
@@ -97,6 +98,13 @@ describe("uniswapV3DirectionalMaxOutputRaw", () => {
       direction: "token1to0",
     });
     expect(d).toBeGreaterThan(c);
+  });
+});
+
+describe("getSqrtRatioAtTickX96", () => {
+  it("tick=0 returns Q96=2^96", () => {
+    const Q96 = 2n ** 96n;
+    expect(getSqrtRatioAtTickX96(0)).toBe(Q96);
   });
 });
 

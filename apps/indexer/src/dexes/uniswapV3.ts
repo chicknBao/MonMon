@@ -2,7 +2,9 @@ import type { PoolSnapshot, TokenDepthSnapshot } from "@monmon/shared";
 import {
   uniswapV3BandAmountsRaw,
   uniswapV3DirectionalMaxOutputRaw,
+  integerSqrt,
   formatUnits,
+  getSqrtRatioAtTickX96,
 } from "@monmon/shared";
 import type { Pool } from "pg";
 import {
@@ -78,6 +80,36 @@ const uniswapV3PoolAbi = [
       { name: "unlocked", type: "bool" },
     ],
   },
+  {
+    type: "function",
+    name: "tickSpacing",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "int24" }],
+  },
+  {
+    type: "function",
+    name: "ticks",
+    stateMutability: "view",
+    inputs: [{ name: "tick", type: "int24" }],
+    outputs: [
+      { name: "liquidityGross", type: "uint128" },
+      { name: "liquidityNet", type: "int128" },
+      { name: "feeGrowthOutside0X128", type: "uint256" },
+      { name: "feeGrowthOutside1X128", type: "uint256" },
+      { name: "tickCumulativeOutside", type: "int56" },
+      { name: "secondsPerLiquidityOutsideX128", type: "uint160" },
+      { name: "secondsOutside", type: "uint32" },
+      { name: "initialized", type: "bool" },
+    ],
+  },
+  {
+    type: "function",
+    name: "tickBitmap",
+    stateMutability: "view",
+    inputs: [{ name: "wordPosition", type: "int16" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
 ] as const;
 
 const erc20Abi = [
@@ -98,6 +130,7 @@ const erc20Abi = [
 ] as const;
 
 const Q192 = 2n ** 192n;
+const Q96 = 2n ** 96n;
 const SCALE_1E18 = 10n ** 18n;
 
 // Canonical Uniswap v3 pool init code hash used for CREATE2 pool address computation.
@@ -133,6 +166,302 @@ function parseBandList(bands: string): number[] {
     .filter(Boolean)
     .map((s) => Number(s))
     .filter((n) => Number.isFinite(n) && n > 0 && n < 20000);
+}
+
+function toInt16(x: bigint): number {
+  // Convert bigint to signed int16 (two's complement) without relying on JS number overflow.
+  let v = x & ((1n << 16n) - 1n);
+  if (v >= (1n << 15n)) v -= 1n << 16n;
+  return Number(v);
+}
+
+function divFloorInt(a: bigint, b: bigint): bigint {
+  // Solidity's `int / positiveInt` truncates toward zero; for negatives we need floor.
+  let q = a / b;
+  const r = a % b;
+  if (r !== 0n && a < 0n) q -= 1n;
+  return q;
+}
+
+function msbIndex(x: bigint): number {
+  if (x <= 0n) throw new Error("msbIndex: x must be > 0");
+  let r = 0;
+  if (x >= 1n << 128n) {
+    x >>= 128n;
+    r += 128;
+  }
+  if (x >= 1n << 64n) {
+    x >>= 64n;
+    r += 64;
+  }
+  if (x >= 1n << 32n) {
+    x >>= 32n;
+    r += 32;
+  }
+  if (x >= 1n << 16n) {
+    x >>= 16n;
+    r += 16;
+  }
+  if (x >= 1n << 8n) {
+    x >>= 8n;
+    r += 8;
+  }
+  if (x >= 1n << 4n) {
+    x >>= 4n;
+    r += 4;
+  }
+  if (x >= 1n << 2n) {
+    x >>= 2n;
+    r += 2;
+  }
+  if (x >= 1n << 1n) {
+    r += 1;
+  }
+  return r;
+}
+
+function lsbIndex(x: bigint): number {
+  if (x <= 0n) throw new Error("lsbIndex: x must be > 0");
+  // count trailing zeros via progressively checking lower chunks
+  let r = 0;
+  const MASK_128 = (1n << 128n) - 1n;
+  const MASK_64 = (1n << 64n) - 1n;
+  const MASK_32 = (1n << 32n) - 1n;
+  const MASK_16 = (1n << 16n) - 1n;
+  const MASK_8 = (1n << 8n) - 1n;
+  const MASK_4 = (1n << 4n) - 1n;
+  const MASK_2 = (1n << 2n) - 1n;
+  const MASK_1 = 1n;
+
+  if ((x & MASK_128) === 0n) {
+    x >>= 128n;
+    r += 128;
+  }
+  if ((x & MASK_64) === 0n) {
+    x >>= 64n;
+    r += 64;
+  }
+  if ((x & MASK_32) === 0n) {
+    x >>= 32n;
+    r += 32;
+  }
+  if ((x & MASK_16) === 0n) {
+    x >>= 16n;
+    r += 16;
+  }
+  if ((x & MASK_8) === 0n) {
+    x >>= 8n;
+    r += 8;
+  }
+  if ((x & MASK_4) === 0n) {
+    x >>= 4n;
+    r += 4;
+  }
+  if ((x & MASK_2) === 0n) {
+    x >>= 2n;
+    r += 2;
+  }
+  if ((x & MASK_1) === 0n) r += 1;
+  return r;
+}
+
+async function uniswapV3DirectionalMaxOutputTickWalkForBands(params: {
+  publicClient: ReturnType<typeof createPublicClient>;
+  poolAddress: string;
+  tickSpacing: number;
+  tickCurrent: number;
+  liquidity: bigint;
+  sqrtPriceX96: bigint;
+  bandBpsList: number[];
+  direction: "token0to1" | "token1to0";
+  maxSteps?: number;
+}): Promise<Record<number, bigint>> {
+  const {
+    publicClient,
+    poolAddress,
+    tickSpacing,
+    tickCurrent,
+    liquidity,
+    sqrtPriceX96,
+    bandBpsList,
+    direction,
+    maxSteps = 250,
+  } = params;
+
+  const Q96Local = Q96;
+  const denom = 10000n;
+  const bandToTargetSqrt: Array<{ bandBps: number; targetSqrtX96: bigint }> = bandBpsList.map(
+    (bandBps) => {
+      const band = BigInt(bandBps);
+      const sqrtPrice2 = sqrtPriceX96 * sqrtPriceX96; // Q192 scaled
+      const sqrtLowerX96 = integerSqrt((sqrtPrice2 * (denom - band)) / denom);
+      const sqrtUpperX96 = integerSqrt((sqrtPrice2 * (denom + band)) / denom);
+
+      const targetSqrtX96 = direction === "token0to1" ? sqrtLowerX96 : sqrtUpperX96;
+      return { bandBps, targetSqrtX96 };
+    },
+  );
+
+  // Traverse from the closest target first (so we can store cumulative output at each band).
+  const sortedTargets =
+    direction === "token0to1"
+      ? bandToTargetSqrt.sort((a, b) => (a.targetSqrtX96 > b.targetSqrtX96 ? -1 : 1))
+      : bandToTargetSqrt.sort((a, b) => (a.targetSqrtX96 < b.targetSqrtX96 ? -1 : 1));
+
+  const outputs: Record<number, bigint> = {};
+
+  let sqrtStart = sqrtPriceX96;
+  let tick = tickCurrent;
+  let L = liquidity;
+  let amountOut = 0n;
+  let idx = 0;
+  let steps = 0;
+
+  const UINT256_MAX = (1n << 256n) - 1n;
+  const bitmapWordCache = new Map<number, bigint>();
+
+  async function readTickBitmapWord(wordPos: number): Promise<bigint> {
+    const cached = bitmapWordCache.get(wordPos);
+    if (cached !== undefined) return cached;
+    const word = await publicClient.readContract({
+      address: poolAddress as `0x${string}`,
+      abi: uniswapV3PoolAbi,
+      functionName: "tickBitmap",
+      args: [wordPos],
+    });
+    const asBig = BigInt(word as unknown as bigint);
+    bitmapWordCache.set(wordPos, asBig);
+    return asBig;
+  }
+
+  function nextInitializedTickWithinOneWord(currentTick: number, lte: boolean): Promise<{
+    tickNext: number;
+    initialized: boolean;
+  }> {
+    const tickBig = BigInt(currentTick);
+    const spacingBig = BigInt(tickSpacing);
+    const compressed = divFloorInt(tickBig, spacingBig); // floor(tick / tickSpacing)
+
+    if (lte) {
+      const wordPos = toInt16(compressed >> 8n);
+      const bitPosBig = ((compressed % 256n) + 256n) % 256n;
+      const bitPos = Number(bitPosBig); // 0..255
+      return (async () => {
+        const word = await readTickBitmapWord(wordPos);
+        const mask = (1n << BigInt(bitPos + 1)) - 1n;
+        const masked = word & mask;
+        const initialized = masked !== 0n;
+        const msb = initialized ? msbIndex(masked) : 0;
+        const nextCompressed = initialized
+          ? compressed - BigInt(bitPos - msb)
+          : compressed - BigInt(bitPos);
+        return { tickNext: Number(nextCompressed * spacingBig), initialized };
+      })();
+    }
+
+    // lte=false: search to the right (>= tick)
+    const compressedP1 = compressed + 1n;
+    const wordPos = toInt16(compressedP1 >> 8n);
+    const bitPosBig = ((compressedP1 % 256n) + 256n) % 256n;
+    const bitPos = Number(bitPosBig);
+
+    return (async () => {
+      const word = await readTickBitmapWord(wordPos);
+      const maskLower = bitPos === 0 ? 0n : (1n << BigInt(bitPos)) - 1n;
+      const mask = UINT256_MAX ^ maskLower; // ~((1<<bitPos)-1) in uint256 terms
+      const masked = word & mask;
+      const initialized = masked !== 0n;
+      const lsb = initialized ? lsbIndex(masked) : 0;
+      const nextCompressed = initialized
+        ? compressedP1 + BigInt(lsb - bitPos)
+        : compressedP1 + BigInt(255 - bitPos);
+      return { tickNext: Number(nextCompressed * spacingBig), initialized };
+    })();
+  }
+
+  while (
+    idx < sortedTargets.length &&
+    L > 0n &&
+    (direction === "token0to1" ? sqrtStart > sortedTargets[idx].targetSqrtX96 : sqrtStart < sortedTargets[idx].targetSqrtX96) &&
+    amountOut >= 0n
+  ) {
+    steps++;
+    if (steps > maxSteps) break;
+    if (sortedTargets[idx].targetSqrtX96 === sqrtStart) {
+      outputs[sortedTargets[idx].bandBps] = amountOut;
+      idx++;
+      continue;
+    }
+
+    const lte = direction === "token0to1"; // moving leftward
+    const { tickNext, initialized } = await nextInitializedTickWithinOneWord(tick, lte);
+    const sqrtTickNextX96 = getSqrtRatioAtTickX96(tickNext);
+
+    const targetSqrt = sortedTargets[idx].targetSqrtX96;
+
+    const sqrtEnd =
+      direction === "token0to1"
+        ? sqrtTickNextX96 > targetSqrt
+          ? sqrtTickNextX96
+          : targetSqrt
+        : sqrtTickNextX96 < targetSqrt
+          ? sqrtTickNextX96
+          : targetSqrt;
+
+    if (sqrtEnd === sqrtStart) {
+      // Prevent infinite loops due to integer rounding at tick boundaries.
+      break;
+    }
+
+    if (direction === "token0to1") {
+      // Exact token0->token1: amount1 = L * (sqrtStart - sqrtEnd) / Q96
+      amountOut += (L * (sqrtStart - sqrtEnd)) / Q96Local;
+    } else {
+      // Exact token1->token0: amount0 = L * (sqrtEnd - sqrtStart) * Q96 / (sqrtEnd * sqrtStart)
+      amountOut += (L * (sqrtEnd - sqrtStart) * Q96Local) / (sqrtEnd * sqrtStart);
+    }
+
+    sqrtStart = sqrtEnd;
+
+    if (sqrtStart === targetSqrt) {
+      outputs[sortedTargets[idx].bandBps] = amountOut;
+      idx++;
+      continue;
+    }
+
+    // We must have landed on tickNext's sqrt boundary; update liquidity if initialized.
+    if (initialized) {
+      const tickInfo = await publicClient.readContract({
+        address: poolAddress as `0x${string}`,
+        abi: uniswapV3PoolAbi,
+        functionName: "ticks",
+        args: [tickNext],
+      });
+
+      const liquidityNet = BigInt((tickInfo as any).liquidityNet ?? tickInfo[1]);
+      let delta = liquidityNet;
+      if (direction === "token0to1") delta = -delta; // pool.swap inverts for zeroForOne
+
+      if (delta >= 0n) {
+        L += delta;
+      } else {
+        const abs = -delta;
+        L = abs >= L ? 0n : L - abs;
+      }
+    }
+
+    // pool.swap: state.tick = zeroForOne ? step.tickNext - 1 : step.tickNext
+    tick = direction === "token0to1" ? tickNext - 1 : tickNext;
+
+    // Continue walking; stepCount is the cap.
+  }
+
+  // Fill any remaining bands with the latest accumulated output.
+  for (const t of sortedTargets.slice(idx)) {
+    outputs[t.bandBps] = amountOut;
+  }
+
+  return outputs;
 }
 
 function formatScaledUsd18ToPostgres(valueScaled18: bigint): string {
@@ -303,7 +632,7 @@ export async function runUniswapV3DepthSnapshot(params: { env: Env; db: Pool }) 
     await Promise.allSettled(
       batch.map(async (p) => {
         const poolAddress = p.poolAddress;
-        const [liquidity, slot0, token0Onchain, token1Onchain] = await Promise.all([
+          const [liquidity, slot0, token0Onchain, token1Onchain, tickSpacing] = await Promise.all([
           publicClient.readContract({
             address: poolAddress as `0x${string}`,
             abi: uniswapV3PoolAbi,
@@ -324,10 +653,16 @@ export async function runUniswapV3DepthSnapshot(params: { env: Env; db: Pool }) 
             abi: uniswapV3PoolAbi,
             functionName: "token1",
           }),
+            publicClient.readContract({
+              address: poolAddress as `0x${string}`,
+              abi: uniswapV3PoolAbi,
+              functionName: "tickSpacing",
+            }),
         ]);
 
-        // slot0[0] is sqrtPriceX96
+        // slot0[0] is sqrtPriceX96 and slot0[1] is tick.
         const sqrtPriceX96 = (slot0 as unknown as { sqrtPriceX96: bigint }).sqrtPriceX96 ?? slot0[0];
+        const tickCurrent = Number((slot0 as unknown as { tick: number }).tick ?? slot0[1]);
         const liquidityBig = liquidity as bigint;
 
         const token0Meta = await readTokenMeta(publicClient, String(token0Onchain));
@@ -351,39 +686,67 @@ export async function runUniswapV3DepthSnapshot(params: { env: Env; db: Pool }) 
         const sqrtPriceX96Big = BigInt(sqrtPriceX96);
         const liquidityBigInt = liquidityBig;
 
-        const simpleOutToken0To1 = uniswapV3DirectionalMaxOutputRaw({
-          liquidity: liquidityBigInt,
-          sqrtPriceX96: sqrtPriceX96Big,
-          bandBps: depthSimpleBandBps,
-          direction: "token0to1",
-        });
-        const simpleOutToken1To0 = uniswapV3DirectionalMaxOutputRaw({
-          liquidity: liquidityBigInt,
-          sqrtPriceX96: sqrtPriceX96Big,
-          bandBps: depthSimpleBandBps,
-          direction: "token1to0",
-        });
+        const bandsForTickWalk = Array.from(new Set([...bandList, depthSimpleBandBps])).sort((a, b) => a - b);
 
-        const outBandPromises = bandList.map(async (bandBps) => {
-          const outToken0To1 = uniswapV3DirectionalMaxOutputRaw({
+        let tickOutputsToken0To1: Record<number, bigint> = {};
+        let tickOutputsToken1To0: Record<number, bigint> = {};
+
+        try {
+          tickOutputsToken0To1 = await uniswapV3DirectionalMaxOutputTickWalkForBands({
+            publicClient,
+            poolAddress,
+            tickSpacing: tickSpacing as number,
+            tickCurrent,
             liquidity: liquidityBigInt,
             sqrtPriceX96: sqrtPriceX96Big,
-            bandBps,
+            bandBpsList: bandsForTickWalk,
             direction: "token0to1",
           });
-          const outToken1To0 = uniswapV3DirectionalMaxOutputRaw({
+        } catch (err) {
+          console.error("uniswap_v3 tickWalk token0to1 failed", { poolAddress, err });
+          for (const b of bandsForTickWalk) {
+            tickOutputsToken0To1[b] = uniswapV3DirectionalMaxOutputRaw({
+              liquidity: liquidityBigInt,
+              sqrtPriceX96: sqrtPriceX96Big,
+              bandBps: b,
+              direction: "token0to1",
+            });
+          }
+        }
+
+        try {
+          tickOutputsToken1To0 = await uniswapV3DirectionalMaxOutputTickWalkForBands({
+            publicClient,
+            poolAddress,
+            tickSpacing: tickSpacing as number,
+            tickCurrent,
             liquidity: liquidityBigInt,
             sqrtPriceX96: sqrtPriceX96Big,
-            bandBps,
+            bandBpsList: bandsForTickWalk,
             direction: "token1to0",
           });
+        } catch (err) {
+          console.error("uniswap_v3 tickWalk token1to0 failed", { poolAddress, err });
+          for (const b of bandsForTickWalk) {
+            tickOutputsToken1To0[b] = uniswapV3DirectionalMaxOutputRaw({
+              liquidity: liquidityBigInt,
+              sqrtPriceX96: sqrtPriceX96Big,
+              bandBps: b,
+              direction: "token1to0",
+            });
+          }
+        }
 
-          const depthSimpleToken0To1 = formatUnits(simpleOutToken0To1, token1Meta.decimals);
-          const depthBandToken0To1 = formatUnits(outToken0To1, token1Meta.decimals);
-          const depthSimpleToken1To0 = formatUnits(simpleOutToken1To0, token0Meta.decimals);
-          const depthBandToken1To0 = formatUnits(outToken1To0, token0Meta.decimals);
+        const upserts: Array<ReturnType<typeof upsertPoolSwapDepthSnapshot>> = [];
+        const depthSimpleBps = depthSimpleBandBps;
 
-          await Promise.all([
+        for (const bandBps of bandList) {
+          const depthSimpleToken0To1 = formatUnits(tickOutputsToken0To1[depthSimpleBps] ?? 0n, token1Meta.decimals);
+          const depthBandToken0To1 = formatUnits(tickOutputsToken0To1[bandBps] ?? 0n, token1Meta.decimals);
+          const depthSimpleToken1To0 = formatUnits(tickOutputsToken1To0[depthSimpleBps] ?? 0n, token0Meta.decimals);
+          const depthBandToken1To0 = formatUnits(tickOutputsToken1To0[bandBps] ?? 0n, token0Meta.decimals);
+
+          upserts.push(
             upsertPoolSwapDepthSnapshot(db, {
               timestamp: nowIso,
               dex: "uniswap_v3",
@@ -404,10 +767,10 @@ export async function runUniswapV3DepthSnapshot(params: { env: Env; db: Pool }) 
               depthSimple: depthSimpleToken1To0,
               depthBand: depthBandToken1To0,
             }),
-          ]);
-        });
+          );
+        }
 
-        await Promise.all(outBandPromises);
+        await Promise.all(upserts);
 
         // Compute spot price token1 per token0 (in real units), scaled 1e18.
         const spotPriceScaled = uniswapV3SpotPriceToken1PerToken0Scaled18({
