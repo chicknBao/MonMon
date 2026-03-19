@@ -2,14 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-const WMON = "0x3bd359c1119da7da1d913d1c4d2b7c461115433a";
 const MON = "0x0000000000000000000000000000000000000000";
 const USDC = "0x754704bc059f8c67012fed69bc8a327a5aafb603";
 const AUSD = "0x00000000efe302beaa2b3e6e1b18d08d69a9012a";
 
 const tokenInOptions = [
   { address: MON, symbol: "MON", decimalsHint: 18 },
-  { address: WMON, symbol: "WMON", decimalsHint: 18 },
   { address: USDC, symbol: "USDC", decimalsHint: 6 },
   { address: AUSD, symbol: "AUSD", decimalsHint: 6 },
 ];
@@ -66,7 +64,7 @@ function formatDepthNumber(value: string | number) {
 export default function SwapPage() {
   const [dex, setDex] = useState<string>("uniswap_v3");
   const [bandBps, setBandBps] = useState<number>(100);
-  const [tokenIn, setTokenIn] = useState<string>(WMON);
+  const [tokenIn, setTokenIn] = useState<string>(MON);
 
   const [totals, setTotals] = useState<TotalRow[]>([]);
   const [pools, setPools] = useState<PoolRow[]>([]);
