@@ -1,23 +1,15 @@
 import type { Pool } from "pg";
 import type { Env } from "../config.js";
 
-import {
-  createPublicClient,
-  decodeEventLog,
-  defineChain,
-  http,
-  keccak256,
-  toBytes,
-} from "viem";
+import { createPublicClient, defineChain, http } from "viem";
 import { formatUnits, uniswapV3DirectionalMaxOutputRaw } from "@monmon/shared";
 import { upsertPool, upsertToken, type PoolMeta, type TokenMeta } from "../repositories/catalog.js";
 import { upsertPoolSwapDepthSnapshot } from "../repositories/snapshots.js";
 
-// MVP adapter:
-// - We snapshot Uniswap v4 pools you specify via poolIds (PoC only).
-// - We compute directional max output within the ±band using active liquidity from StateView
-//   and the same sqrt-bound formulas as the v3 constant-liquidity metric.
-// - To label token0/token1 we decode PoolManager's Initialize event for the poolId.
+// MVP adapter for Uniswap v4:
+// - Uses PositionManager.poolKeys(poolIdBytes25) to get currency0/currency1 without log scanning.
+// - Uses StateView.getSlot0(poolId) and StateView.getLiquidity(poolId) for sqrtPrice + active liquidity.
+// - Computes directional max output within a sqrt-price band with constant-liquidity sqrt-bound math.
 
 const erc20Abi = [
   {
@@ -36,58 +28,18 @@ const erc20Abi = [
   },
 ] as const;
 
-const normalizeAddress = (addr: string) => addr.toLowerCase();
-
-function parsePoolIds(raw?: string): string[] {
-  if (!raw) return [];
-  return raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((s) => normalizeAddress(s))
-    .filter((s) => /^0x[0-9a-fA-F]{64}$/.test(s));
-}
-
-function v4PoolAddress(poolId: string) {
-  return `v4:${poolId.toLowerCase()}`;
-}
-
-function isNativeCurrency(addr: string) {
-  return normalizeAddress(addr) === "0x0000000000000000000000000000000000000000";
-}
-
-async function readTokenMeta(publicClient: ReturnType<typeof createPublicClient>, tokenAddress: string): Promise<TokenMeta> {
-  const addr = normalizeAddress(tokenAddress);
-  if (isNativeCurrency(addr)) {
-    // For Monad native MON, we surface it as MON with 18 decimals.
-    // (If you later want WMON instead, we can map here.)
-    return { tokenAddress: addr, symbol: "MON", decimals: 18 };
-  }
-
-  const [decimals, symbol] = await Promise.all([
-    publicClient.readContract({ address: addr as `0x${string}`, abi: erc20Abi, functionName: "decimals" }),
-    publicClient.readContract({ address: addr as `0x${string}`, abi: erc20Abi, functionName: "symbol" }),
-  ]);
-
-  return { tokenAddress: addr, symbol: String(symbol), decimals: Number(decimals) };
-}
-
-const POOL_MANAGER_INIT_EVENT_SIG = "Initialize(bytes32,address,address,uint24,int24,address,uint160,int24)";
-const POOL_MANAGER_INIT_TOPIC0 = keccak256(toBytes(POOL_MANAGER_INIT_EVENT_SIG));
-
-const poolManagerInitializeAbi = [
+const positionManagerAbi = [
   {
-    type: "event",
-    name: "Initialize",
-    inputs: [
-      { name: "id", type: "bytes32", indexed: true },
-      { name: "currency0", type: "address", indexed: true },
-      { name: "currency1", type: "address", indexed: true },
-      { name: "fee", type: "uint24", indexed: false },
-      { name: "tickSpacing", type: "int24", indexed: false },
-      { name: "hooks", type: "address", indexed: false },
-      { name: "sqrtPriceX96", type: "uint160", indexed: false },
-      { name: "tick", type: "int24", indexed: false },
+    type: "function",
+    name: "poolKeys",
+    stateMutability: "view",
+    inputs: [{ name: "poolId", type: "bytes25" }],
+    outputs: [
+      { name: "currency0", type: "address" },
+      { name: "currency1", type: "address" },
+      { name: "fee", type: "uint24" },
+      { name: "tickSpacing", type: "int24" },
+      { name: "hooks", type: "address" },
     ],
   },
 ] as const;
@@ -114,6 +66,26 @@ const stateViewAbi = [
   },
 ] as const;
 
+const NATIVE_CURRENCY = "0x0000000000000000000000000000000000000000";
+
+function normalizeAddress(addr: string) {
+  return addr.toLowerCase();
+}
+
+function parsePoolIds(raw?: string): string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => normalizeAddress(s))
+    .filter((s) => /^0x[0-9a-fA-F]{64}$/.test(s));
+}
+
+function v4PoolAddress(poolId: string) {
+  return `v4:${poolId.toLowerCase()}`;
+}
+
 function parseBandList(bands: string): number[] {
   return bands
     .split(",")
@@ -123,46 +95,24 @@ function parseBandList(bands: string): number[] {
     .filter((n) => Number.isFinite(n) && n > 0 && n < 20000);
 }
 
-async function findV4PoolCurrenciesFromInitialize(params: {
-  publicClient: ReturnType<typeof createPublicClient>;
-  poolManager: string;
-  poolId: string;
-  fromBlock: bigint;
-  toBlock: bigint;
-  maxLogBlockRange: bigint;
-}): Promise<{ currency0: string; currency1: string }> {
-  const { publicClient, poolManager, poolId, fromBlock, toBlock, maxLogBlockRange } = params;
+function truncatePoolIdToBytes25(corePoolId: string): `0x${string}` {
+  // PositionInfoLibrary truncates bytes32 poolId to bytes25 by using the most-significant 200 bits.
+  // In practice this is equivalent to shifting right by 56 bits (dropping the lower 56 bits).
+  const core = BigInt(corePoolId);
+  const bytes25 = core >> 56n; // 200 bits
+  return `0x${bytes25.toString(16).padStart(50, "0")}` as `0x${string}`;
+}
 
-  for (let start = fromBlock; start <= toBlock; start += maxLogBlockRange) {
-    const end = start + maxLogBlockRange - 1n > toBlock ? toBlock : start + maxLogBlockRange - 1n;
-    const logs = (await publicClient.request({
-      method: "eth_getLogs",
-      params: [
-        {
-          address: poolManager as `0x${string}`,
-          fromBlock: `0x${start.toString(16)}`,
-          toBlock: `0x${end.toString(16)}`,
-          topics: [POOL_MANAGER_INIT_TOPIC0, poolId as `0x${string}`],
-        },
-      ],
-    })) as Array<{ data: string; topics: string[] }>;
+async function readTokenMeta(publicClient: ReturnType<typeof createPublicClient>, tokenAddress: string): Promise<TokenMeta> {
+  const addr = normalizeAddress(tokenAddress);
+  if (addr === NATIVE_CURRENCY) return { tokenAddress: addr, symbol: "MON", decimals: 18 };
 
-    if (logs.length === 0) continue;
+  const [decimals, symbol] = await Promise.all([
+    publicClient.readContract({ address: addr as `0x${string}`, abi: erc20Abi, functionName: "decimals" }),
+    publicClient.readContract({ address: addr as `0x${string}`, abi: erc20Abi, functionName: "symbol" }),
+  ]);
 
-    // We only care about currency0/currency1 for token labeling + decimals.
-    const decoded = decodeEventLog({
-      abi: poolManagerInitializeAbi,
-      eventName: "Initialize",
-      data: logs[0].data as `0x${string}`,
-      topics: logs[0].topics as unknown as [`0x${string}`, ...`0x${string}`[]],
-    });
-
-    const currency0 = normalizeAddress(String((decoded as any).args.currency0));
-    const currency1 = normalizeAddress(String((decoded as any).args.currency1));
-    return { currency0, currency1 };
-  }
-
-  throw new Error(`uniswap_v4: could not find Initialize log for poolId=${poolId}`);
+  return { tokenAddress: addr, symbol: String(symbol), decimals: Number(decimals) };
 }
 
 export async function runUniswapV4DepthSnapshot(params: { env: Env; db: Pool }) {
@@ -171,9 +121,8 @@ export async function runUniswapV4DepthSnapshot(params: { env: Env; db: Pool }) 
   const poolIds = parsePoolIds(env.UNISWAP_V4_POOL_IDS);
   if (poolIds.length === 0) return;
 
-  if (!env.UNISWAP_V4_POOL_MANAGER || !env.UNISWAP_V4_STATE_VIEW) {
-    throw new Error("UNISWAP_V4_POOL_MANAGER and UNISWAP_V4_STATE_VIEW are required for uniswap_v4 snapshots");
-  }
+  if (!env.UNISWAP_V4_STATE_VIEW) throw new Error("UNISWAP_V4_STATE_VIEW is required for uniswap_v4 snapshots");
+  if (!env.UNISWAP_V4_POSITION_MANAGER) throw new Error("UNISWAP_V4_POSITION_MANAGER is required for uniswap_v4 snapshots");
 
   const monadChain = defineChain({
     id: env.MONAD_CHAIN_ID,
@@ -187,13 +136,6 @@ export async function runUniswapV4DepthSnapshot(params: { env: Env; db: Pool }) 
     transport: http(env.MONAD_RPC_URL),
   });
 
-  const latestBlock = await publicClient.getBlockNumber();
-  const baseLookback = BigInt(env.DISCOVERY_LOOKBACK_BLOCKS);
-  const toBlock = latestBlock;
-  // Some RPC providers clamp `eth_getLogs` range aggressively on free tiers.
-  // Keep chunks small to avoid hard failures.
-  const maxLogBlockRange = 100n;
-
   const bandList = parseBandList(env.BAND_BPS_LIST);
   if (bandList.length === 0) return;
 
@@ -201,43 +143,15 @@ export async function runUniswapV4DepthSnapshot(params: { env: Env; db: Pool }) 
   const depthSimpleBps = env.DEPTH_SIMPLE_BAND_BPS;
 
   for (const poolId of poolIds) {
-    let currency0: string | null = null;
-    let currency1: string | null = null;
+    const poolIdBytes25 = truncatePoolIdToBytes25(poolId);
 
-    // Retry with progressively larger lookback windows until we find the Initialize event.
-    // (Pool creation can be older than DISCOVERY_LOOKBACK_BLOCKS.)
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const multiplier = 10n ** BigInt(attempt); // 1x, 10x, 100x, 1000x
-      const lookback = baseLookback * multiplier;
-      const fromBlock = latestBlock > lookback ? latestBlock - lookback : 0n;
-
-      try {
-        const res = await findV4PoolCurrenciesFromInitialize({
-          publicClient,
-          poolManager: env.UNISWAP_V4_POOL_MANAGER,
-          poolId,
-          fromBlock,
-          toBlock,
-          maxLogBlockRange,
-        });
-        currency0 = res.currency0;
-        currency1 = res.currency1;
-        break;
-      } catch (err) {
-        // If not found yet, expand lookback and try again.
-      }
-    }
-
-    if (!currency0 || !currency1) {
-      throw new Error(`uniswap_v4: could not find Initialize log for poolId=${poolId}`);
-    }
-
-    const [token0Meta, token1Meta] = await Promise.all([
-      readTokenMeta(publicClient, currency0),
-      readTokenMeta(publicClient, currency1),
-    ]);
-
-    const [slot0, liquidity] = await Promise.all([
+    const [poolKeys, slot0, liquidity] = await Promise.all([
+      publicClient.readContract({
+        address: env.UNISWAP_V4_POSITION_MANAGER as `0x${string}`,
+        abi: positionManagerAbi,
+        functionName: "poolKeys",
+        args: [poolIdBytes25],
+      }),
       publicClient.readContract({
         address: env.UNISWAP_V4_STATE_VIEW as `0x${string}`,
         abi: stateViewAbi,
@@ -250,6 +164,14 @@ export async function runUniswapV4DepthSnapshot(params: { env: Env; db: Pool }) 
         functionName: "getLiquidity",
         args: [poolId as `0x${string}`],
       }),
+    ]);
+
+    const currency0Addr = normalizeAddress(String(poolKeys[0]));
+    const currency1Addr = normalizeAddress(String(poolKeys[1]));
+
+    const [token0Meta, token1Meta] = await Promise.all([
+      readTokenMeta(publicClient, currency0Addr),
+      readTokenMeta(publicClient, currency1Addr),
     ]);
 
     const sqrtPriceX96 = BigInt((slot0 as any)[0]);
@@ -265,15 +187,12 @@ export async function runUniswapV4DepthSnapshot(params: { env: Env; db: Pool }) 
     await Promise.all([upsertToken(db, token0Meta), upsertToken(db, token1Meta), upsertPool(db, poolMeta)]);
 
     for (const bandBps of bandList) {
-      // token0 -> token1 exact input (zeroForOne = true in v4 terms).
       const outToken0To1Raw = uniswapV3DirectionalMaxOutputRaw({
         liquidity: liquidityBigInt,
         sqrtPriceX96,
         bandBps,
         direction: "token0to1",
       });
-
-      // token1 -> token0 exact input.
       const outToken1To0Raw = uniswapV3DirectionalMaxOutputRaw({
         liquidity: liquidityBigInt,
         sqrtPriceX96,
@@ -287,7 +206,6 @@ export async function runUniswapV4DepthSnapshot(params: { env: Env; db: Pool }) 
         bandBps: depthSimpleBps,
         direction: "token0to1",
       });
-
       const outDepthSimpleToken1To0Raw = uniswapV3DirectionalMaxOutputRaw({
         liquidity: liquidityBigInt,
         sqrtPriceX96,

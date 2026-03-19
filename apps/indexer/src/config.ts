@@ -18,6 +18,7 @@ export const envSchema = z.object({
   // Uniswap v4 (PoC)
   // PoolIds are the bytes32 Uniswap v4 poolIds (not addresses).
   UNISWAP_V4_POOL_MANAGER: z.string().optional(),
+  UNISWAP_V4_POSITION_MANAGER: z.string().optional(),
   UNISWAP_V4_STATE_VIEW: z.string().optional(),
   UNISWAP_V4_POOL_IDS: z.string().optional(),
 
