@@ -1,7 +1,7 @@
 import "dotenv/config";
-import { loadEnv } from "./config";
-import { createDb } from "./db";
-import { runSnapshot } from "./jobs/snapshot";
+import { loadEnv } from "./config.js";
+import { createDb } from "./db.js";
+import { runSnapshot } from "./jobs/snapshot.js";
 
 async function main() {
   const env = loadEnv();

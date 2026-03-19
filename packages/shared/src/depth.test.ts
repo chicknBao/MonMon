@@ -1,4 +1,4 @@
-import { uniswapV3BandAmountsRaw } from "./depth";
+import { uniswapV3BandAmountsRaw } from "./depth.js";
 
 describe("uniswapV3BandAmountsRaw", () => {
   it("returns 0 for bandBps=0", () => {

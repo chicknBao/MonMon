@@ -3,9 +3,9 @@ import { uniswapV3BandAmountsRaw, formatUnits } from "@monmon/shared";
 import type { Pool } from "pg";
 import { createPublicClient, decodeEventLog, http, toBytes, toHex, keccak256, defineChain } from "viem";
 
-import { upsertPool, upsertToken, type PoolMeta, type TokenMeta } from "../repositories/catalog";
-import { upsertPoolSnapshot, upsertTokenDepthSnapshot } from "../repositories/snapshots";
-import type { Env } from "../config";
+import { upsertPool, upsertToken, type PoolMeta, type TokenMeta } from "../repositories/catalog.js";
+import { upsertPoolSnapshot, upsertTokenDepthSnapshot } from "../repositories/snapshots.js";
+import type { Env } from "../config.js";
 
 const UNISWAP_V3_FACTORY = "0x204faca1764b154221e35c0d20abb3c525710498";
 

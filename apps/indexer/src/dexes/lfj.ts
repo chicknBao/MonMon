@@ -1,9 +1,9 @@
 import type { PoolSnapshot, TokenDepthSnapshot } from "@monmon/shared";
 import type { Pool } from "pg";
 import { createPublicClient, decodeEventLog, http, defineChain } from "viem";
-import type { Env } from "../config";
-import { upsertPool, upsertToken, type PoolMeta, type TokenMeta } from "../repositories/catalog";
-import { upsertPoolSnapshot, upsertTokenDepthSnapshot } from "../repositories/snapshots";
+import type { Env } from "../config.js";
+import { upsertPool, upsertToken, type PoolMeta, type TokenMeta } from "../repositories/catalog.js";
+import { upsertPoolSnapshot, upsertTokenDepthSnapshot } from "../repositories/snapshots.js";
 
 // LBFactory / LBRouter / LBQuoter (LFJ v2.2)
 const LBF_FACTORY = "0xb43120c4745967fa9b93E79C149E66B0f2D6Fe0c";

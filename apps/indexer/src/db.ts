@@ -1,5 +1,5 @@
 import { Pool } from "pg";
-import type { Env } from "./config";
+import type { Env } from "./config.js";
 
 export function createDb(env: Env): Pool {
   return new Pool({

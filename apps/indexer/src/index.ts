@@ -1,9 +1,9 @@
 import "dotenv/config";
-import { loadEnv } from "./config";
-import { createDb } from "./db";
-import { runSnapshot } from "./jobs/snapshot";
-import { startSnapshotScheduler } from "./scheduler";
-import { migrateDb } from "./migrate";
+import { loadEnv } from "./config.js";
+import { createDb } from "./db.js";
+import { runSnapshot } from "./jobs/snapshot.js";
+import { startSnapshotScheduler } from "./scheduler.js";
+import { migrateDb } from "./migrate.js";
 
 async function main() {
   const env = loadEnv();

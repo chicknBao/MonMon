@@ -2,11 +2,11 @@ import type { PoolSnapshot, TokenDepthSnapshot } from "@monmon/shared";
 import { formatUnits } from "@monmon/shared";
 import type { Pool } from "pg";
 import { createPublicClient, defineChain, decodeEventLog, http, keccak256, toBytes, toHex } from "viem";
-import type { Env } from "../config";
+import type { Env } from "../config.js";
 
-import { upsertPool, upsertToken } from "../repositories/catalog";
-import { upsertPoolSnapshot, upsertTokenDepthSnapshot } from "../repositories/snapshots";
-import type { TokenMeta, PoolMeta } from "../repositories/catalog";
+import { upsertPool, upsertToken } from "../repositories/catalog.js";
+import { upsertPoolSnapshot, upsertTokenDepthSnapshot } from "../repositories/snapshots.js";
+import type { TokenMeta, PoolMeta } from "../repositories/catalog.js";
 
 const BALANCER_VAULT_V2 = "0xba12222222228d8Ba445958a75a0704d566BF2C8";
 

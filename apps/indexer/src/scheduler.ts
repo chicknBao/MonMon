@@ -1,7 +1,7 @@
 import cron from "node-cron";
 import type { Pool } from "pg";
-import type { Env } from "./config";
-import { runSnapshot } from "./jobs/snapshot";
+import type { Env } from "./config.js";
+import { runSnapshot } from "./jobs/snapshot.js";
 
 export function startSnapshotScheduler(params: { env: Env; db: Pool }) {
   const { env, db } = params;

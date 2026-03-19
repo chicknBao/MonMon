@@ -1,3 +1,3 @@
-export * from "./types";
-export * from "./depth";
+export * from "./types.js";
+export * from "./depth.js";
 

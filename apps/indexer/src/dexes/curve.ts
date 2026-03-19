@@ -2,10 +2,10 @@ import type { PoolSnapshot, TokenDepthSnapshot } from "@monmon/shared";
 import { formatUnits } from "@monmon/shared";
 import type { Pool } from "pg";
 import { createPublicClient, http, defineChain } from "viem";
-import type { Env } from "../config";
+import type { Env } from "../config.js";
 
-import { upsertPool, upsertToken, type PoolMeta, type TokenMeta } from "../repositories/catalog";
-import { upsertPoolSnapshot, upsertTokenDepthSnapshot } from "../repositories/snapshots";
+import { upsertPool, upsertToken, type PoolMeta, type TokenMeta } from "../repositories/catalog.js";
+import { upsertPoolSnapshot, upsertTokenDepthSnapshot } from "../repositories/snapshots.js";
 
 const CURVE_REGISTRY = "0x90E00ACe148ca3b23Ac1bC8C240C2a7Dd9c2d7f5";
 
