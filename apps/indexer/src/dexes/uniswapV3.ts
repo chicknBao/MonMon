@@ -275,9 +275,13 @@ export async function runUniswapV3DepthSnapshot(params: { env: Env; db: Pool }) 
         bytecodeHash: UNISWAP_V3_POOL_INIT_CODE_HASH as `0x${string}`,
       });
       const p = normalizeAddress(String(predictedPoolAddress));
-      if (p !== "0x0000000000000000000000000000000000000000" && !pools.has(p)) {
-        pools.set(p, { poolAddress: p, token0: t0, token1: t1 });
-      }
+      if (p === "0x0000000000000000000000000000000000000000" || pools.has(p)) continue;
+
+      // Only keep pools that are actually deployed; otherwise pool state calls will revert.
+      const code = await publicClient.getCode({ address: predictedPoolAddress as `0x${string}` });
+      if (!code || code === "0x") continue;
+
+      pools.set(p, { poolAddress: p, token0: t0, token1: t1 });
     }
   }
 
