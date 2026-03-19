@@ -100,18 +100,20 @@ export function uniswapV3DirectionalMaxOutputRaw(params: {
   const sqrtUpperX96 = integerSqrt((sqrtPrice2 * (denom + band)) / denom);
 
   if (direction === "token0to1") {
-    // price moves up toward sqrtUpper => token1 out
-    const a = sqrtPriceX96;
-    const b = sqrtUpperX96;
+    // Exact input token0 -> token1 decreases sqrtPrice (token1/token0),
+    // so token1 out corresponds to moving from sqrtPrice down to sqrtLower.
+    const a = sqrtLowerX96;
+    const b = sqrtPriceX96;
     if (b <= a) return 0n;
-    return (liquidity * (b - a)) / Q96; // amount1
+    return (liquidity * (b - a)) / Q96; // amount1 for [sqrtLower, sqrtPrice]
   }
 
-  // direction === "token1to0": price moves down toward sqrtLower => token0 out
-  const a = sqrtLowerX96;
-  const b = sqrtPriceX96;
+  // direction === "token1to0": exact input token1 -> token0 increases sqrtPrice,
+  // so token0 out corresponds to moving from sqrtPrice up to sqrtUpper.
+  const a = sqrtPriceX96;
+  const b = sqrtUpperX96;
   if (a === 0n || b <= a) return 0n;
-  return (liquidity * (b - a) * Q96) / (b * a); // amount0
+  return (liquidity * (b - a) * Q96) / (b * a); // amount0 for [sqrtPrice, sqrtUpper]
 }
 
 export function formatUnits(raw: bigint, decimals: number): string {
