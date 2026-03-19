@@ -265,7 +265,12 @@ export async function runUniswapV3DepthSnapshot(params: { env: Env; db: Pool }) 
         abi: uniswapV3FactoryGetPoolAbi,
         functionName: "getPool",
         args: [t0 as `0x${string}`, t1 as `0x${string}`, fee],
+      }).catch((err) => {
+        console.warn("uniswapV3 seed getPool failed (skipping)", { fee, t0, t1, error: String(err) });
+        return null;
       });
+
+      if (!poolAddr) continue;
       const p = normalizeAddress(String(poolAddr));
       if (p !== "0x0000000000000000000000000000000000000000" && !pools.has(p)) {
         pools.set(p, { poolAddress: p, token0: t0, token1: t1 });
