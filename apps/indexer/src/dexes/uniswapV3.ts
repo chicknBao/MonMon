@@ -1,5 +1,5 @@
 import type { PoolSnapshot, TokenDepthSnapshot } from "@monmon/shared";
-import { uniswapV3BandAmountsRaw } from "@monmon/shared";
+import { uniswapV3BandAmountsRaw, formatUnits } from "@monmon/shared";
 import type { Pool } from "pg";
 import { createPublicClient, decodeEventLog, http, toBytes, toHex, keccak256, defineChain } from "viem";
 
@@ -80,7 +80,6 @@ const erc20Abi = [
 ] as const;
 
 const Q192 = 2n ** 192n;
-const ONE = 1n;
 const SCALE_1E18 = 10n ** 18n;
 
 const STABLE_TOKENS_USD_1: Record<
@@ -91,8 +90,28 @@ const STABLE_TOKENS_USD_1: Record<
   "0x754704bc059f8c67012fed69bc8a327a5aafb603": { symbol: "USDC", decimals: 6 },
   "0xe7cd86e13ac4309349f30b3435a9d337750fc82d": { symbol: "USDT", decimals: 6 },
   "0x00000000efe302beaa2b3e6e1b18d08d69a9012a": { symbol: "AUSD", decimals: 18 },
-  // Optional: treat MON-wrapped as non-stable; we only price against the stables above.
 };
+
+/** Wrapped MON — used as PoC $1 quote when no stable leg exists. */
+const WMON = "0x3bd359c1119da7da1d913d1c4d2b7c461115433a";
+
+const uniswapV3FactoryGetPoolAbi = [
+  {
+    type: "function",
+    name: "getPool",
+    stateMutability: "view",
+    inputs: [
+      { name: "tokenA", type: "address" },
+      { name: "tokenB", type: "address" },
+      { name: "fee", type: "uint24" },
+    ],
+    outputs: [{ name: "pool", type: "address" }],
+  },
+] as const;
+
+function isWmon(addr: string) {
+  return normalizeAddress(addr) === WMON;
+}
 
 function normalizeAddress(addr: string) {
   return addr.toLowerCase();
@@ -222,7 +241,31 @@ export async function runUniswapV3DepthSnapshot(params: { env: Env; db: Pool }) 
     if (pools.size >= env.DISCOVERY_MAX_POOLS) break;
   }
 
-  console.log(`Uniswap v3 discovered ${pools.size} pools from last blocks window`);
+  // Always try WMON / major quote pools via factory (often missed if created outside lookback window).
+  const quoteTokens = [
+    "0x754704bc059f8c67012fed69bc8a327a5aafb603", // USDC
+    "0x00000000efe302beaa2b3e6e1b18d08d69a9012a", // AUSD
+  ];
+  const feeTiers = [100, 500, 3000, 10000] as const;
+  for (const other of quoteTokens) {
+    const t0 = WMON < other ? WMON : other;
+    const t1 = WMON < other ? other : WMON;
+    for (const fee of feeTiers) {
+      if (pools.size >= env.DISCOVERY_MAX_POOLS) break;
+      const poolAddr = await publicClient.readContract({
+        address: UNISWAP_V3_FACTORY as `0x${string}`,
+        abi: uniswapV3FactoryGetPoolAbi,
+        functionName: "getPool",
+        args: [t0 as `0x${string}`, t1 as `0x${string}`, fee],
+      });
+      const p = normalizeAddress(String(poolAddr));
+      if (p !== "0x0000000000000000000000000000000000000000" && !pools.has(p)) {
+        pools.set(p, { poolAddress: p, token0: t0, token1: t1 });
+      }
+    }
+  }
+
+  console.log(`Uniswap v3 discovered ${pools.size} pools (logs + WMON seed)`);
 
   const nowIso = new Date().toISOString();
 
@@ -232,9 +275,6 @@ export async function runUniswapV3DepthSnapshot(params: { env: Env; db: Pool }) 
     await Promise.allSettled(
       batch.map(async (p) => {
         const poolAddress = p.poolAddress;
-        const token0Address = p.token0;
-        const token1Address = p.token1;
-
         const [liquidity, slot0, token0Onchain, token1Onchain] = await Promise.all([
           publicClient.readContract({
             address: poolAddress as `0x${string}`,
@@ -285,36 +325,32 @@ export async function runUniswapV3DepthSnapshot(params: { env: Env; db: Pool }) 
           token1Decimals: token1Meta.decimals,
         });
 
-        // Derive token USD prices only if one side is a stable.
         const stable0 = STABLE_TOKENS_USD_1[normalizeAddress(token0Meta.tokenAddress)];
         const stable1 = STABLE_TOKENS_USD_1[normalizeAddress(token1Meta.tokenAddress)];
+        const w0 = isWmon(token0Meta.tokenAddress);
+        const w1 = isWmon(token1Meta.tokenAddress);
 
         let price0UsdScaled: bigint | undefined;
         let price1UsdScaled: bigint | undefined;
-        if (stable0 && !stable1) {
-          price0UsdScaled = SCALE_1E18; // stable
-          price1UsdScaled = spotPriceScaled; // token1 per token0
-        } else if (!stable0 && stable1) {
-          price1UsdScaled = SCALE_1E18; // stable
-          // token0 price = 1 / (token1 per token0)
-          price0UsdScaled = (SCALE_1E18 * SCALE_1E18) / spotPriceScaled;
-        } else if (stable0 && stable1) {
-          // Both are stables: treat as 1.0 each (good enough for MVP).
+
+        if (stable0 && stable1) {
           price0UsdScaled = SCALE_1E18;
           price1UsdScaled = SCALE_1E18;
+        } else if (stable0) {
+          price0UsdScaled = SCALE_1E18;
+          price1UsdScaled = spotPriceScaled;
+        } else if (stable1) {
+          price1UsdScaled = SCALE_1E18;
+          price0UsdScaled = (SCALE_1E18 * SCALE_1E18) / spotPriceScaled;
+        } else if (w0 && !w1) {
+          // PoC: treat 1 WMON ≈ $1 for ranking
+          price0UsdScaled = SCALE_1E18;
+          price1UsdScaled = spotPriceScaled;
+        } else if (!w0 && w1) {
+          price1UsdScaled = SCALE_1E18;
+          price0UsdScaled = (SCALE_1E18 * SCALE_1E18) / spotPriceScaled;
         }
 
-        if (!price0UsdScaled || !price1UsdScaled) {
-          // Can't value in USD without a stable anchor. Still write depth in token units later; MVP skips.
-          return;
-        }
-
-        const pricesUsd: Record<string, string> = {
-          [token0Meta.tokenAddress]: formatScaledUsd18ToPostgres(price0UsdScaled),
-          [token1Meta.tokenAddress]: formatScaledUsd18ToPostgres(price1UsdScaled),
-        };
-
-        // Token amounts used for pool_snapshots at the "simple" band.
         const simpleAmounts = uniswapV3BandAmountsRaw({
           liquidity: liquidityBig,
           sqrtPriceX96: BigInt(sqrtPriceX96),
@@ -326,6 +362,51 @@ export async function runUniswapV3DepthSnapshot(params: { env: Env; db: Pool }) 
           [token1Meta.tokenAddress]: simpleAmounts.amount1.toString(),
         };
 
+        if (!price0UsdScaled || !price1UsdScaled) {
+          // No USD/WMON anchor: store depth in token human units (still rankable per token after SUM).
+          const poolSnap: PoolSnapshot = {
+            timestamp: nowIso,
+            dex: "uniswap_v3",
+            poolAddress,
+            tokenAmounts,
+          };
+          await upsertPoolSnapshot(db, poolSnap);
+
+          const d0Simple = formatUnits(simpleAmounts.amount0, token0Meta.decimals);
+          const d1Simple = formatUnits(simpleAmounts.amount1, token1Meta.decimals);
+          await Promise.all(
+            bandList.map(async (bandBps) => {
+              const bandAmounts = uniswapV3BandAmountsRaw({
+                liquidity: liquidityBig,
+                sqrtPriceX96: BigInt(sqrtPriceX96),
+                bandBps,
+              });
+              await upsertTokenDepthSnapshot(db, {
+                timestamp: nowIso,
+                dex: "uniswap_v3",
+                tokenAddress: token0Meta.tokenAddress,
+                bandBps,
+                depthSimple: d0Simple,
+                depthBand: formatUnits(bandAmounts.amount0, token0Meta.decimals),
+              });
+              await upsertTokenDepthSnapshot(db, {
+                timestamp: nowIso,
+                dex: "uniswap_v3",
+                tokenAddress: token1Meta.tokenAddress,
+                bandBps,
+                depthSimple: d1Simple,
+                depthBand: formatUnits(bandAmounts.amount1, token1Meta.decimals),
+              });
+            }),
+          );
+          return;
+        }
+
+        const pricesUsd: Record<string, string> = {
+          [token0Meta.tokenAddress]: formatScaledUsd18ToPostgres(price0UsdScaled),
+          [token1Meta.tokenAddress]: formatScaledUsd18ToPostgres(price1UsdScaled),
+        };
+
         const poolSnap: PoolSnapshot = {
           timestamp: nowIso,
           dex: "uniswap_v3",
@@ -335,9 +416,10 @@ export async function runUniswapV3DepthSnapshot(params: { env: Env; db: Pool }) 
         };
         await upsertPoolSnapshot(db, poolSnap);
 
-        // Persist token depth snapshots for each band.
-        const token0SimpleUsdScaled = (simpleAmounts.amount0 * price0UsdScaled) / 10n ** BigInt(token0Meta.decimals);
-        const token1SimpleUsdScaled = (simpleAmounts.amount1 * price1UsdScaled) / 10n ** BigInt(token1Meta.decimals);
+        const token0SimpleUsdScaled =
+          (simpleAmounts.amount0 * price0UsdScaled) / 10n ** BigInt(token0Meta.decimals);
+        const token1SimpleUsdScaled =
+          (simpleAmounts.amount1 * price1UsdScaled) / 10n ** BigInt(token1Meta.decimals);
 
         await Promise.all(
           bandList.map(async (bandBps) => {
@@ -347,31 +429,27 @@ export async function runUniswapV3DepthSnapshot(params: { env: Env; db: Pool }) 
               bandBps,
             });
 
-            const token0BandUsdScaled = (bandAmounts.amount0 * price0UsdScaled) / 10n ** BigInt(token0Meta.decimals);
-            const token1BandUsdScaled = (bandAmounts.amount1 * price1UsdScaled) / 10n ** BigInt(token1Meta.decimals);
+            const token0BandUsdScaled =
+              (bandAmounts.amount0 * price0UsdScaled) / 10n ** BigInt(token0Meta.decimals);
+            const token1BandUsdScaled =
+              (bandAmounts.amount1 * price1UsdScaled) / 10n ** BigInt(token1Meta.decimals);
 
-            const token0Depth: TokenDepthSnapshot = {
+            await upsertTokenDepthSnapshot(db, {
               timestamp: nowIso,
               dex: "uniswap_v3",
               tokenAddress: token0Meta.tokenAddress,
               bandBps,
               depthSimple: formatScaledUsd18ToPostgres(token0SimpleUsdScaled),
               depthBand: formatScaledUsd18ToPostgres(token0BandUsdScaled),
-            };
-
-            const token1Depth: TokenDepthSnapshot = {
+            });
+            await upsertTokenDepthSnapshot(db, {
               timestamp: nowIso,
               dex: "uniswap_v3",
               tokenAddress: token1Meta.tokenAddress,
               bandBps,
               depthSimple: formatScaledUsd18ToPostgres(token1SimpleUsdScaled),
               depthBand: formatScaledUsd18ToPostgres(token1BandUsdScaled),
-            };
-
-            await Promise.all([
-              upsertTokenDepthSnapshot(db, token0Depth),
-              upsertTokenDepthSnapshot(db, token1Depth),
-            ]);
+            });
           }),
         );
       }),

@@ -34,9 +34,9 @@ export async function upsertTokenDepthSnapshot(db: Pool, snapshot: TokenDepthSna
       VALUES ($1, $2, $3, $4, $5, $6, $7)
       ON CONFLICT (ts, dex, token_address, band_bps)
       DO UPDATE SET
-        depth_simple = EXCLUDED.depth_simple,
-        depth_band = EXCLUDED.depth_band,
-        token_price_usd = EXCLUDED.token_price_usd
+        depth_simple = token_depth_snapshots.depth_simple::numeric + EXCLUDED.depth_simple::numeric,
+        depth_band = token_depth_snapshots.depth_band::numeric + EXCLUDED.depth_band::numeric,
+        token_price_usd = COALESCE(EXCLUDED.token_price_usd, token_depth_snapshots.token_price_usd)
     `,
     [
       ts.toISOString(),
