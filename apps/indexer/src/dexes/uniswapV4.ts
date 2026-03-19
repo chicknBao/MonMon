@@ -2,7 +2,7 @@ import type { Pool } from "pg";
 import type { Env } from "../config.js";
 
 import { createPublicClient, defineChain, http } from "viem";
-import { formatUnits, uniswapV3DirectionalMaxOutputRaw } from "@monmon/shared";
+import { formatUnits, isUniswapV4PoolAllowed, uniswapV3DirectionalMaxOutputRaw } from "@monmon/shared";
 import { upsertPool, upsertToken, type PoolMeta, type TokenMeta } from "../repositories/catalog.js";
 import { upsertPoolSwapDepthSnapshot } from "../repositories/snapshots.js";
 
@@ -173,6 +173,10 @@ export async function runUniswapV4DepthSnapshot(params: { env: Env; db: Pool }) 
       readTokenMeta(publicClient, currency0Addr),
       readTokenMeta(publicClient, currency1Addr),
     ]);
+
+    if (!isUniswapV4PoolAllowed(token0Meta.symbol, token1Meta.symbol)) {
+      continue;
+    }
 
     const sqrtPriceX96 = BigInt((slot0 as any)[0]);
     const liquidityBigInt = BigInt(liquidity as any);

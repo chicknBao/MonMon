@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { UNISWAP_V4_ALLOWED_TOKEN_SYMBOLS } from "@monmon/shared";
 import { getDb } from "../../../lib/db";
 
 const DEXES = ["uniswap_v3", "uniswap_v4", "curve", "balancer", "lfj"] as const;
@@ -39,6 +40,7 @@ export async function GET(req: NextRequest) {
     }
 
     const dexList = dex === "all" ? DEXES : [dex];
+    const allowedSymbols = [...UNISWAP_V4_ALLOWED_TOKEN_SYMBOLS];
     const db = getDb();
 
     const latestTsRes = await db.query(
@@ -56,20 +58,23 @@ export async function GET(req: NextRequest) {
     const totalsRes = await db.query(
       `SELECT
          ps.token_out,
-         COALESCE(tok.symbol, ps.token_out) AS symbol,
-         COALESCE(tok.decimals, 0) AS decimals,
+         COALESCE(tout.symbol, ps.token_out) AS symbol,
+         COALESCE(tout.decimals, 0) AS decimals,
          SUM(ps.depth_simple) AS depth_simple,
          SUM(ps.depth_band) AS depth_band
        FROM pool_swap_depth_snapshots ps
-       LEFT JOIN tokens tok ON tok.token_address = ps.token_out
+       LEFT JOIN tokens tin ON tin.token_address = ps.token_in
+       LEFT JOIN tokens tout ON tout.token_address = ps.token_out
        WHERE ps.band_bps = $1
          AND ps.dex = ANY($2::text[])
          AND ps.token_in = $3
          AND ps.ts = $4::timestamptz
+         AND UPPER(COALESCE(tin.symbol, '')) = ANY($5::text[])
+         AND UPPER(COALESCE(tout.symbol, '')) = ANY($5::text[])
        GROUP BY ps.token_out, symbol, decimals
        ORDER BY depth_band DESC
-       LIMIT $5`,
-      [bandBps, dexList, tokenIn, latestTs, limitTokens],
+       LIMIT $6`,
+      [bandBps, dexList, tokenIn, latestTs, allowedSymbols, limitTokens],
     );
 
     const poolsRes = await db.query(
@@ -77,19 +82,22 @@ export async function GET(req: NextRequest) {
          ps.dex,
          ps.pool_address,
          ps.token_out,
-         COALESCE(tok.symbol, ps.token_out) AS symbol,
-         COALESCE(tok.decimals, 0) AS decimals,
+         COALESCE(tout.symbol, ps.token_out) AS symbol,
+         COALESCE(tout.decimals, 0) AS decimals,
          ps.depth_simple,
          ps.depth_band
        FROM pool_swap_depth_snapshots ps
-       LEFT JOIN tokens tok ON tok.token_address = ps.token_out
+       LEFT JOIN tokens tin ON tin.token_address = ps.token_in
+       LEFT JOIN tokens tout ON tout.token_address = ps.token_out
        WHERE ps.band_bps = $1
          AND ps.dex = ANY($2::text[])
          AND ps.token_in = $3
          AND ps.ts = $4::timestamptz
+         AND UPPER(COALESCE(tin.symbol, '')) = ANY($5::text[])
+         AND UPPER(COALESCE(tout.symbol, '')) = ANY($5::text[])
        ORDER BY ps.depth_band DESC
-       LIMIT $5`,
-      [bandBps, dexList, tokenIn, latestTs, limitPools],
+       LIMIT $6`,
+      [bandBps, dexList, tokenIn, latestTs, allowedSymbols, limitPools],
     );
 
     return NextResponse.json({
