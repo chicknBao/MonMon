@@ -53,6 +53,22 @@ CREATE TABLE IF NOT EXISTS token_depth_snapshots (
   PRIMARY KEY (ts, dex, token_address, band_bps)
 );
 
+-- Directional pool swap depth snapshots: max output token for selling token_in
+-- into token_out while staying within a given price-space band around the pool's
+-- current price.
+CREATE TABLE IF NOT EXISTS pool_swap_depth_snapshots (
+  ts TIMESTAMPTZ NOT NULL,
+  dex TEXT NOT NULL REFERENCES dexes(name) ON DELETE CASCADE,
+  pool_address TEXT NOT NULL REFERENCES pools(pool_address) ON DELETE CASCADE,
+  band_bps INT NOT NULL,
+  token_in TEXT NOT NULL REFERENCES tokens(token_address) ON DELETE CASCADE,
+  token_out TEXT NOT NULL REFERENCES tokens(token_address) ON DELETE CASCADE,
+  depth_simple NUMERIC NOT NULL,
+  depth_band NUMERIC NOT NULL,
+  token_price_usd NUMERIC,
+  PRIMARY KEY (ts, dex, pool_address, band_bps, token_in, token_out)
+);
+
 -- Fast ranking table for the dashboard (top N tokens per snapshot).
 CREATE TABLE IF NOT EXISTS token_top_n (
   ts TIMESTAMPTZ NOT NULL,
@@ -67,6 +83,8 @@ CREATE TABLE IF NOT EXISTS token_top_n (
 
 CREATE INDEX IF NOT EXISTS idx_pool_snapshots_dex_ts ON pool_snapshots (dex, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_token_depth_snapshots_dex_token_ts ON token_depth_snapshots (dex, token_address, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_pool_swap_depth_snapshots_dex_inout_ts
+  ON pool_swap_depth_snapshots (dex, token_in, token_out, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_token_top_n_dex_ts ON token_top_n (dex, ts DESC);
 
 -- Convert to hypertables (idempotent) when TimescaleDB is available.
@@ -75,6 +93,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'create_hypertable') THEN
     PERFORM create_hypertable('pool_snapshots', 'ts', if_not_exists => TRUE);
     PERFORM create_hypertable('token_depth_snapshots', 'ts', if_not_exists => TRUE);
+    PERFORM create_hypertable('pool_swap_depth_snapshots', 'ts', if_not_exists => TRUE);
     PERFORM create_hypertable('token_top_n', 'ts', if_not_exists => TRUE);
   END IF;
 END $$;

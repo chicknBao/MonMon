@@ -1,4 +1,4 @@
-import type { PoolSnapshot, TokenDepthSnapshot } from "@monmon/shared";
+import type { PoolSnapshot, TokenDepthSnapshot, PoolSwapDepthSnapshot } from "@monmon/shared";
 import type { Pool } from "pg";
 
 export async function upsertPoolSnapshot(db: Pool, snapshot: PoolSnapshot) {
@@ -46,6 +46,34 @@ export async function upsertTokenDepthSnapshot(db: Pool, snapshot: TokenDepthSna
       snapshot.depthSimple,
       snapshot.depthBand,
       null,
+    ],
+  );
+}
+
+export async function upsertPoolSwapDepthSnapshot(db: Pool, snapshot: PoolSwapDepthSnapshot) {
+  const ts = new Date(snapshot.timestamp);
+  await db.query(
+    `
+      INSERT INTO pool_swap_depth_snapshots (
+        ts, dex, pool_address, band_bps, token_in, token_out, depth_simple, depth_band, token_price_usd
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT (ts, dex, pool_address, band_bps, token_in, token_out)
+      DO UPDATE SET
+        depth_simple = EXCLUDED.depth_simple,
+        depth_band = EXCLUDED.depth_band,
+        token_price_usd = COALESCE(EXCLUDED.token_price_usd, pool_swap_depth_snapshots.token_price_usd)
+    `,
+    [
+      ts.toISOString(),
+      snapshot.dex,
+      snapshot.poolAddress,
+      snapshot.bandBps,
+      snapshot.tokenIn,
+      snapshot.tokenOut,
+      snapshot.depthSimple,
+      snapshot.depthBand,
+      snapshot.tokenPriceUsd ?? null,
     ],
   );
 }

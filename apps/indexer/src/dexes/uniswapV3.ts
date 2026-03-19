@@ -1,5 +1,9 @@
 import type { PoolSnapshot, TokenDepthSnapshot } from "@monmon/shared";
-import { uniswapV3BandAmountsRaw, formatUnits } from "@monmon/shared";
+import {
+  uniswapV3BandAmountsRaw,
+  uniswapV3DirectionalMaxOutputRaw,
+  formatUnits,
+} from "@monmon/shared";
 import type { Pool } from "pg";
 import {
   createPublicClient,
@@ -14,7 +18,11 @@ import {
 } from "viem";
 
 import { upsertPool, upsertToken, type PoolMeta, type TokenMeta } from "../repositories/catalog.js";
-import { upsertPoolSnapshot, upsertTokenDepthSnapshot } from "../repositories/snapshots.js";
+import {
+  upsertPoolSnapshot,
+  upsertTokenDepthSnapshot,
+  upsertPoolSwapDepthSnapshot,
+} from "../repositories/snapshots.js";
 import type { Env } from "../config.js";
 
 const UNISWAP_V3_FACTORY = "0x204faca1764b154221e35c0d20abb3c525710498";
@@ -337,6 +345,69 @@ export async function runUniswapV3DepthSnapshot(params: { env: Env; db: Pool }) 
           upsertToken(db, token1Meta),
           upsertPool(db, poolMeta),
         ]);
+
+        // Directional "max output within ±p% band" (liquidatable amount for a swap).
+        // We store both directions for each pool: token0->token1 and token1->token0.
+        const sqrtPriceX96Big = BigInt(sqrtPriceX96);
+        const liquidityBigInt = liquidityBig;
+
+        const simpleOutToken0To1 = uniswapV3DirectionalMaxOutputRaw({
+          liquidity: liquidityBigInt,
+          sqrtPriceX96: sqrtPriceX96Big,
+          bandBps: depthSimpleBandBps,
+          direction: "token0to1",
+        });
+        const simpleOutToken1To0 = uniswapV3DirectionalMaxOutputRaw({
+          liquidity: liquidityBigInt,
+          sqrtPriceX96: sqrtPriceX96Big,
+          bandBps: depthSimpleBandBps,
+          direction: "token1to0",
+        });
+
+        const outBandPromises = bandList.map(async (bandBps) => {
+          const outToken0To1 = uniswapV3DirectionalMaxOutputRaw({
+            liquidity: liquidityBigInt,
+            sqrtPriceX96: sqrtPriceX96Big,
+            bandBps,
+            direction: "token0to1",
+          });
+          const outToken1To0 = uniswapV3DirectionalMaxOutputRaw({
+            liquidity: liquidityBigInt,
+            sqrtPriceX96: sqrtPriceX96Big,
+            bandBps,
+            direction: "token1to0",
+          });
+
+          const depthSimpleToken0To1 = formatUnits(simpleOutToken0To1, token1Meta.decimals);
+          const depthBandToken0To1 = formatUnits(outToken0To1, token1Meta.decimals);
+          const depthSimpleToken1To0 = formatUnits(simpleOutToken1To0, token0Meta.decimals);
+          const depthBandToken1To0 = formatUnits(outToken1To0, token0Meta.decimals);
+
+          await Promise.all([
+            upsertPoolSwapDepthSnapshot(db, {
+              timestamp: nowIso,
+              dex: "uniswap_v3",
+              poolAddress,
+              bandBps,
+              tokenIn: token0Meta.tokenAddress,
+              tokenOut: token1Meta.tokenAddress,
+              depthSimple: depthSimpleToken0To1,
+              depthBand: depthBandToken0To1,
+            }),
+            upsertPoolSwapDepthSnapshot(db, {
+              timestamp: nowIso,
+              dex: "uniswap_v3",
+              poolAddress,
+              bandBps,
+              tokenIn: token1Meta.tokenAddress,
+              tokenOut: token0Meta.tokenAddress,
+              depthSimple: depthSimpleToken1To0,
+              depthBand: depthBandToken1To0,
+            }),
+          ]);
+        });
+
+        await Promise.all(outBandPromises);
 
         // Compute spot price token1 per token0 (in real units), scaled 1e18.
         const spotPriceScaled = uniswapV3SpotPriceToken1PerToken0Scaled18({
