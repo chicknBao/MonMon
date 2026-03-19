@@ -9,9 +9,28 @@ export async function runSnapshot(params: { env: Env; db: Pool }) {
   const { env, db } = params;
 
   // MVP order: implement Uniswap v3 first.
-  await runUniswapV3DepthSnapshot({ env, db });
-  await runCurveDepthSnapshot({ env, db });
-  await runLfjDepthSnapshot({ env, db });
-  await runBalancerDepthSnapshot({ env, db });
+  try {
+    await runUniswapV3DepthSnapshot({ env, db });
+  } catch (err) {
+    console.error("snapshot: uniswap_v3 failed", err);
+  }
+
+  try {
+    await runCurveDepthSnapshot({ env, db });
+  } catch (err) {
+    console.error("snapshot: curve failed", err);
+  }
+
+  try {
+    await runLfjDepthSnapshot({ env, db });
+  } catch (err) {
+    console.error("snapshot: lfj failed", err);
+  }
+
+  try {
+    await runBalancerDepthSnapshot({ env, db });
+  } catch (err) {
+    console.error("snapshot: balancer failed", err);
+  }
 }
 
