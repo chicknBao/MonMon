@@ -188,10 +188,11 @@ export async function runUniswapV4DepthSnapshot(params: { env: Env; db: Pool }) 
   });
 
   const latestBlock = await publicClient.getBlockNumber();
-  const lookback = BigInt(env.DISCOVERY_LOOKBACK_BLOCKS);
-  const fromBlock = latestBlock > lookback ? latestBlock - lookback : 0n;
+  const baseLookback = BigInt(env.DISCOVERY_LOOKBACK_BLOCKS);
   const toBlock = latestBlock;
-  const maxLogBlockRange = 1_000n;
+  // Some RPC providers clamp `eth_getLogs` range aggressively on free tiers.
+  // Keep chunks small to avoid hard failures.
+  const maxLogBlockRange = 100n;
 
   const bandList = parseBandList(env.BAND_BPS_LIST);
   if (bandList.length === 0) return;
@@ -200,14 +201,36 @@ export async function runUniswapV4DepthSnapshot(params: { env: Env; db: Pool }) 
   const depthSimpleBps = env.DEPTH_SIMPLE_BAND_BPS;
 
   for (const poolId of poolIds) {
-    const { currency0, currency1 } = await findV4PoolCurrenciesFromInitialize({
-      publicClient,
-      poolManager: env.UNISWAP_V4_POOL_MANAGER,
-      poolId,
-      fromBlock,
-      toBlock,
-      maxLogBlockRange,
-    });
+    let currency0: string | null = null;
+    let currency1: string | null = null;
+
+    // Retry with progressively larger lookback windows until we find the Initialize event.
+    // (Pool creation can be older than DISCOVERY_LOOKBACK_BLOCKS.)
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const multiplier = 10n ** BigInt(attempt); // 1x, 10x, 100x, 1000x
+      const lookback = baseLookback * multiplier;
+      const fromBlock = latestBlock > lookback ? latestBlock - lookback : 0n;
+
+      try {
+        const res = await findV4PoolCurrenciesFromInitialize({
+          publicClient,
+          poolManager: env.UNISWAP_V4_POOL_MANAGER,
+          poolId,
+          fromBlock,
+          toBlock,
+          maxLogBlockRange,
+        });
+        currency0 = res.currency0;
+        currency1 = res.currency1;
+        break;
+      } catch (err) {
+        // If not found yet, expand lookback and try again.
+      }
+    }
+
+    if (!currency0 || !currency1) {
+      throw new Error(`uniswap_v4: could not find Initialize log for poolId=${poolId}`);
+    }
 
     const [token0Meta, token1Meta] = await Promise.all([
       readTokenMeta(publicClient, currency0),
