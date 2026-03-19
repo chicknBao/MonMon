@@ -12,7 +12,7 @@ const tokenInOptions = [
   { address: AUSD, symbol: "AUSD", decimalsHint: 18 },
 ];
 
-const bandOptions = [50, 100, 200];
+const bandOptions = [25, 50, 100, 200, 500];
 const dexOptions = ["uniswap_v3", "curve", "balancer", "lfj", "all"] as const;
 
 type TotalRow = {

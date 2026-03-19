@@ -12,7 +12,7 @@ export const envSchema = z.object({
   DISCOVERY_MAX_POOLS: z.coerce.number().int().positive().default(500),
 
   // Depth band widths to persist (dashboards can query a specific band).
-  BAND_BPS_LIST: z.string().default("50,100,200"),
+  BAND_BPS_LIST: z.string().default("25,50,100,200,500"),
   DEPTH_SIMPLE_BAND_BPS: z.coerce.number().int().positive().default(100),
 
   // Snapshot scheduling (optional). If unset, indexer runs once and exits.
