@@ -18,6 +18,7 @@ const dexOptions = ["uniswap_v3", "uniswap_v4", "curve", "balancer", "lfj", "all
 type TotalRow = {
   tokenOut: string;
   symbol: string;
+  name?: string;
   decimals: number;
   depthSimple: string;
   depthBand: string;
@@ -28,6 +29,7 @@ type PoolRow = {
   poolAddress: string;
   tokenOut: string;
   symbol: string;
+  name?: string;
   decimals: number;
   depthSimple: string;
   depthBand: string;
@@ -180,8 +182,11 @@ export default function SwapPage() {
               totals.map((t) => (
                 <tr key={t.tokenOut}>
                   <td style={{ padding: 8 }}>
-                    {t.symbol}{" "}
-                    <span style={{ opacity: 0.6, fontFamily: "monospace" }}>
+                    <span style={{ fontWeight: 500 }}>{t.symbol}</span>
+                    {t.name && t.name !== t.symbol ? (
+                      <span style={{ display: "block", opacity: 0.65, fontSize: 12 }}>{t.name}</span>
+                    ) : null}
+                    <span style={{ opacity: 0.55, fontFamily: "monospace", fontSize: 12, display: "block" }}>
                       {t.tokenOut.slice(0, 6)}…{t.tokenOut.slice(-4)}
                     </span>
                   </td>
@@ -222,8 +227,11 @@ export default function SwapPage() {
                     {p.dex} {p.poolAddress.slice(0, 6)}…{p.poolAddress.slice(-4)}
                   </td>
                   <td style={{ padding: 8 }}>
-                    {p.symbol}{" "}
-                    <span style={{ opacity: 0.6, fontFamily: "monospace" }}>
+                    <span style={{ fontWeight: 500 }}>{p.symbol}</span>
+                    {p.name && p.name !== p.symbol ? (
+                      <span style={{ display: "block", opacity: 0.65, fontSize: 12 }}>{p.name}</span>
+                    ) : null}
+                    <span style={{ opacity: 0.55, fontFamily: "monospace", fontSize: 12, display: "block" }}>
                       {p.tokenOut.slice(0, 6)}…{p.tokenOut.slice(-4)}
                     </span>
                   </td>

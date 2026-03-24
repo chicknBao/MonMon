@@ -1,5 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getDb } from "../../../lib/db";
+import {
+  getMonadRpcConfig,
+  needsOnChainTokenMetadata,
+  normalizeTokenAddress,
+  persistTokenMetadataToDb,
+  resolveTokenMetadataMap,
+} from "../../../lib/tokenMetadata";
 
 const DEXES = ["uniswap_v3", "curve", "balancer", "lfj"] as const;
 type DexName = (typeof DEXES)[number] | "all";
@@ -65,18 +72,32 @@ export async function GET(req: NextRequest) {
       [bandBps, dexList, latestTs, limit],
     );
 
+    const { rpcUrl, chainId } = getMonadRpcConfig();
+    const toResolve = new Set<string>();
+    for (const r of tokensRes.rows as { symbol: string; token_address: string }[]) {
+      if (needsOnChainTokenMetadata(r.symbol, r.token_address)) toResolve.add(r.token_address);
+    }
+    const resolved = await resolveTokenMetadataMap([...toResolve], rpcUrl, chainId);
+    if (resolved.size > 0) {
+      await Promise.all([...resolved.values()].map((m) => persistTokenMetadataToDb(db, m)));
+    }
+
     return NextResponse.json({
       bandBps,
       dex,
       latestTs,
-      tokens: tokensRes.rows.map((r: any) => ({
-        dex: r.dex,
-        tokenAddress: r.token_address,
-        symbol: r.symbol,
-        decimals: Number(r.decimals),
-        depthSimple: r.depth_simple?.toString() ?? "0",
-        depthBand: r.depth_band?.toString() ?? "0",
-      })),
+      tokens: tokensRes.rows.map((r: any) => {
+        const m = resolved.get(normalizeTokenAddress(r.token_address));
+        return {
+          dex: r.dex,
+          tokenAddress: r.token_address,
+          symbol: m?.symbol ?? r.symbol,
+          name: m?.name,
+          decimals: m ? m.decimals : Number(r.decimals),
+          depthSimple: r.depth_simple?.toString() ?? "0",
+          depthBand: r.depth_band?.toString() ?? "0",
+        };
+      }),
     });
   } catch (err) {
     console.error(err);

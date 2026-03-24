@@ -1,5 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getDb } from "../../../lib/db";
+import {
+  getMonadRpcConfig,
+  needsOnChainTokenMetadata,
+  normalizeTokenAddress,
+  NATIVE_TOKEN_ADDRESS,
+  persistTokenMetadataToDb,
+  resolveTokenMetadataMap,
+} from "../../../lib/tokenMetadata";
 
 const DEXES = ["uniswap_v3", "curve", "balancer", "lfj"] as const;
 type DexName = (typeof DEXES)[number] | "all";
@@ -57,16 +65,33 @@ export async function GET(req: NextRequest) {
       [bandBps, dexList, tokenAddress.toLowerCase(), limit],
     );
 
+    const addr = tokenAddress.toLowerCase();
+    const dbSymbol = (seriesRes.rows[0] as { symbol?: string } | undefined)?.symbol;
+    const { rpcUrl, chainId } = getMonadRpcConfig();
+    let displaySymbol = addr === NATIVE_TOKEN_ADDRESS ? "MON" : (dbSymbol ?? addr);
+    let displayName: string | undefined = addr === NATIVE_TOKEN_ADDRESS ? "MON" : undefined;
+    if (addr !== NATIVE_TOKEN_ADDRESS && needsOnChainTokenMetadata(dbSymbol, addr)) {
+      const resolved = await resolveTokenMetadataMap([addr], rpcUrl, chainId);
+      const m = resolved.get(normalizeTokenAddress(addr));
+      if (m) {
+        await persistTokenMetadataToDb(db, m);
+        displaySymbol = m.symbol;
+        displayName = m.name;
+      }
+    }
+
     return NextResponse.json({
       dex,
-      tokenAddress: tokenAddress.toLowerCase(),
+      tokenAddress: addr,
       bandBps,
+      symbol: displaySymbol,
+      name: displayName,
       series: seriesRes.rows.map((r: any) => ({
         dex: r.dex,
         timestamp: r.ts.toISOString(),
         depthSimple: r.depth_simple?.toString() ?? "0",
         depthBand: r.depth_band?.toString() ?? "0",
-        symbol: r.symbol ?? tokenAddress,
+        symbol: displaySymbol,
       })),
     });
   } catch (err) {
