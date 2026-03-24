@@ -71,7 +71,10 @@ export async function GET(req: NextRequest) {
          AND ps.ts = $4::timestamptz
          AND UPPER(COALESCE(tin.symbol, '')) = ANY($5::text[])
          AND UPPER(COALESCE(tout.symbol, '')) = ANY($5::text[])
-       GROUP BY ps.token_out, symbol, decimals
+       GROUP BY
+         ps.token_out,
+         COALESCE(tout.symbol, ps.token_out),
+         COALESCE(tout.decimals, 0)
        ORDER BY depth_band DESC
        LIMIT $6`,
       [bandBps, dexList, tokenIn, latestTs, allowedSymbols, limitTokens],
