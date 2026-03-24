@@ -2,10 +2,11 @@
   "name": "@monmon/shared",
   "private": true,
   "version": "0.0.0",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc -b",
+    "build": "tsc -b --force && node ./scripts/fix-dist-esm-imports.mjs",
     "dev": "tsx watch src/index.ts"
   }
 }

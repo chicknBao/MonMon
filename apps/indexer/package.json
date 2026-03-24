@@ -7,7 +7,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -b",
+    "build": "npm --prefix ../../packages/shared run build && tsc -b",
     "start": "node dist/index.js",
     "typecheck": "tsc -b --pretty false",
     "seed": "tsx src/seed.ts"
