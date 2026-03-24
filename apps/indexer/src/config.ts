@@ -22,8 +22,8 @@ export const envSchema = z.object({
   UNISWAP_V4_STATE_VIEW: z.string().optional(),
   UNISWAP_V4_POOL_IDS: z.string().optional(),
 
-  // Curve on Monad: set registry and/or explicit pool addresses (comma-separated).
-  // If both are unset, Curve snapshots are skipped (no mainnet registry fallback).
+  // Curve: MetaRegistry-style contract (pool_count / pool_list / get_*). On Monad (143),
+  // defaults in the indexer to the official MetaRegistry if this is unset. Set to "" to opt out.
   CURVE_REGISTRY: z.string().optional(),
   CURVE_POOL_ADDRESSES: z.string().optional(),
 

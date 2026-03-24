@@ -45,6 +45,13 @@ const registryAbi = [
   },
   {
     type: "function",
+    name: "get_n_coins",
+    stateMutability: "view",
+    inputs: [{ name: "pool", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
     name: "get_coins",
     stateMutability: "view",
     inputs: [{ name: "pool", type: "address" }],
@@ -65,6 +72,11 @@ const registryAbi = [
     outputs: [{ name: "", type: "uint256[8]" }],
   },
 ] as const;
+
+/** Curve MetaRegistry on Monad mainnet (pool_list / get_coins / get_balances). */
+const MONAD_CURVE_META_REGISTRY = "0xe6da14500f0b5783e2325f9c5a7ee5d99dafb42";
+
+const NATIVE_CURRENCY = "0x0000000000000000000000000000000000000000";
 
 const poolCoinsUintAbi = [
   {
@@ -172,11 +184,25 @@ function dxForBand(balance: bigint, bandBps: number): bigint {
 
 async function readTokenMeta(publicClient: ReturnType<typeof createPublicClient>, tokenAddress: string): Promise<TokenMeta> {
   const addr = normalizeAddress(tokenAddress);
+  if (addr === NATIVE_CURRENCY) {
+    return { tokenAddress: addr, symbol: "MON", decimals: 18 };
+  }
   const [decimals, symbol] = await Promise.all([
     publicClient.readContract({ address: addr as `0x${string}`, abi: erc20Abi, functionName: "decimals" }),
     publicClient.readContract({ address: addr as `0x${string}`, abi: erc20Abi, functionName: "symbol" }),
   ]);
   return { tokenAddress: addr, symbol: String(symbol), decimals: Number(decimals) };
+}
+
+/** MetaRegistry when unset; empty string means “no registry” (opt out). */
+function resolveCurveRegistry(env: { CURVE_REGISTRY?: string; MONAD_CHAIN_ID: number }): string | undefined {
+  if (env.CURVE_REGISTRY !== undefined) {
+    const t = env.CURVE_REGISTRY.trim();
+    if (t === "") return undefined;
+    return normalizeAddress(t);
+  }
+  if (env.MONAD_CHAIN_ID === 143) return MONAD_CURVE_META_REGISTRY;
+  return undefined;
 }
 
 async function discoverRegistryPools(
@@ -237,15 +263,36 @@ async function readPoolViaRegistry(
       }),
     ]);
 
+    const nCoinsBn = await publicClient
+      .readContract({
+        address: registry,
+        abi: registryAbi,
+        functionName: "get_n_coins",
+        args: [poolAddress as `0x${string}`],
+      })
+      .catch(() => 0n);
+
+    let n = Number(nCoinsBn);
+    if (!Number.isFinite(n) || n <= 0) {
+      n = 0;
+      for (let idx = 0; idx < coins.length; idx++) {
+        if (isZeroAddress(String(coins[idx]))) break;
+        n = idx + 1;
+      }
+    }
+    n = Math.min(n, coins.length, 8);
+    if (n < 2) return null;
+
     const tokenAddresses: string[] = [];
     const tokenDecimals: number[] = [];
     const balOut: bigint[] = [];
 
-    for (let idx = 0; idx < coins.length; idx++) {
+    for (let idx = 0; idx < n; idx++) {
       const c = coins[idx];
-      if (isZeroAddress(String(c))) break;
       tokenAddresses.push(normalizeAddress(String(c)));
-      tokenDecimals.push(Number((decimals as readonly bigint[])[idx] ?? 18n));
+      let decVal = Number((decimals as readonly bigint[])[idx] ?? 18n);
+      if (!Number.isFinite(decVal) || decVal <= 0) decVal = 18;
+      tokenDecimals.push(decVal);
       balOut.push(BigInt((balances as readonly bigint[])[idx] ?? 0n));
     }
 
@@ -268,8 +315,7 @@ async function readCoinAtIndex(
       functionName: "coins",
       args: [BigInt(i)],
     });
-    const s = normalizeAddress(String(a));
-    return isZeroAddress(s) ? null : s;
+    return normalizeAddress(String(a));
   } catch {
     try {
       const a = await publicClient.readContract({
@@ -278,8 +324,7 @@ async function readCoinAtIndex(
         functionName: "coins",
         args: [BigInt(i)],
       });
-      const s = normalizeAddress(String(a));
-      return isZeroAddress(s) ? null : s;
+      return normalizeAddress(String(a));
     } catch {
       return null;
     }
@@ -322,7 +367,8 @@ async function readPoolDirect(
 
   for (let i = 0; i < 8; i++) {
     const coin = await readCoinAtIndex(publicClient, pool, i);
-    if (!coin) break;
+    if (coin === null) break;
+    if (isZeroAddress(coin) && tokenAddresses.length > 0) break;
     const bal = await readBalanceAtIndex(publicClient, pool, i);
     if (bal === null) break;
     tokenAddresses.push(coin);
@@ -365,10 +411,10 @@ async function getDy(
 export async function runCurveDepthSnapshot(params: { env: Env; db: Pool }) {
   const { env, db } = params;
 
-  const registryRaw = env.CURVE_REGISTRY?.trim();
+  const registryResolved = resolveCurveRegistry(env);
   const explicitPools = parsePoolAddresses(env.CURVE_POOL_ADDRESSES);
-  if (!registryRaw && explicitPools.length === 0) {
-    console.log("curve: CURVE_REGISTRY and CURVE_POOL_ADDRESSES unset — skipping Curve snapshot");
+  if (!registryResolved && explicitPools.length === 0) {
+    console.log("curve: no MetaRegistry default for this chain and no CURVE_POOL_ADDRESSES — skipping Curve snapshot");
     return;
   }
 
@@ -388,8 +434,8 @@ export async function runCurveDepthSnapshot(params: { env: Env; db: Pool }) {
   });
 
   const fromRegistry =
-    registryRaw && /^0x[0-9a-fA-F]{40}$/.test(registryRaw)
-      ? await discoverRegistryPools(publicClient, registryRaw as `0x${string}`, env.DISCOVERY_MAX_POOLS)
+    registryResolved && /^0x[0-9a-f]{40}$/.test(registryResolved)
+      ? await discoverRegistryPools(publicClient, registryResolved as `0x${string}`, env.DISCOVERY_MAX_POOLS)
       : [];
 
   const poolAddresses = [...new Set([...fromRegistry, ...explicitPools])].slice(0, env.DISCOVERY_MAX_POOLS);
@@ -399,8 +445,9 @@ export async function runCurveDepthSnapshot(params: { env: Env; db: Pool }) {
     return;
   }
 
-  console.log(`curve: snapshotting ${poolAddresses.length} pools`);
-  const registryAddr = registryRaw && /^0x[0-9a-fA-F]{40}$/.test(registryRaw) ? (registryRaw as `0x${string}`) : null;
+  console.log(`curve: snapshotting ${poolAddresses.length} pools (registry=${registryResolved ?? "none"})`);
+  const registryAddr =
+    registryResolved && /^0x[0-9a-f]{40}$/.test(registryResolved) ? (registryResolved as `0x${string}`) : null;
 
   const nowIso = new Date().toISOString();
   const depthSimpleBps = env.DEPTH_SIMPLE_BAND_BPS;
