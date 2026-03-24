@@ -65,6 +65,7 @@ export default function SwapPage() {
   const [dex, setDex] = useState<string>("uniswap_v3");
   const [bandBps, setBandBps] = useState<number>(100);
   const [tokenIn, setTokenIn] = useState<string>(MON);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [totals, setTotals] = useState<TotalRow[]>([]);
   const [pools, setPools] = useState<PoolRow[]>([]);
@@ -85,15 +86,26 @@ export default function SwapPage() {
     setTotals([]);
     setPools([]);
     setLatestTs(null);
+    setLoadError(null);
 
     fetch(queryUrl)
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) {
+          const payload = await r.json().catch(() => ({}));
+          const message = typeof payload?.error === "string" ? payload.error : `Request failed (${r.status})`;
+          throw new Error(message);
+        }
+        return r.json();
+      })
       .then((data: any) => {
         setLatestTs(data.latestTs ?? null);
         setTotals(data.totals ?? []);
         setPools(data.pools ?? []);
       })
-      .catch(() => undefined);
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : "Failed to load data";
+        setLoadError(message);
+      });
   }, [queryUrl]);
 
   return (
@@ -142,6 +154,11 @@ export default function SwapPage() {
       <div style={{ opacity: 0.8, marginBottom: 24, marginTop: 8 }}>
         Max output within the ±{bandBps / 100}% price band (directional, per pool). Totals sum across pools.
       </div>
+      {loadError ? (
+        <div style={{ color: "#b00020", marginBottom: 12 }}>
+          API error: {loadError}
+        </div>
+      ) : null}
 
       <section style={{ marginTop: 16 }}>
         <h2 style={{ margin: 0, marginBottom: 8 }}>Total max output across pools</h2>
