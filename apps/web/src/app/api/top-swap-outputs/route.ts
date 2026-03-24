@@ -72,6 +72,7 @@ export async function GET(req: NextRequest) {
        WHERE ps.band_bps = $1
          AND ps.dex = ANY($2::text[])
          AND ps.token_in = ANY($3::text[])
+         AND ps.depth_band > 0
          AND (
            ps.dex <> 'uniswap_v4'
            OR (
@@ -101,6 +102,7 @@ export async function GET(req: NextRequest) {
          AND ps.dex = ANY($2::text[])
          AND ps.token_in = ANY($3::text[])
          AND ps.ts = $4::timestamptz
+         AND ps.depth_band > 0
          AND (
            ps.dex <> 'uniswap_v4'
            OR (
@@ -133,6 +135,7 @@ export async function GET(req: NextRequest) {
          AND ps.dex = ANY($2::text[])
          AND ps.token_in = ANY($3::text[])
          AND ps.ts = $4::timestamptz
+         AND ps.depth_band > 0
          AND (
            ps.dex <> 'uniswap_v4'
            OR (
