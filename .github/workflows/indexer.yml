@@ -38,6 +38,9 @@ jobs:
           UNISWAP_V4_POSITION_MANAGER: "0x5b7ec4a94ff9bedb700fb82ab09d5846972f4016"
           UNISWAP_V4_STATE_VIEW: "0x77395f3b2e73ae90843717371294fa97cc419d64"
           UNISWAP_V4_POOL_IDS: "0x18a9fc874581f3ba12b7898f80a683c66fd5877fd74b26a85ba9a3a79c549954,0xadaf30776f551bccdfb307c3fd8cdec198ca9a852434c8022ee32d1ccedd8219"
+          # Curve on Monad: set in GitHub secrets when available (registry and/or pools).
+          # CURVE_REGISTRY: "${{ secrets.CURVE_REGISTRY }}"
+          # CURVE_POOL_ADDRESSES: "${{ secrets.CURVE_POOL_ADDRESSES }}"
           # Ensure indexer runs once and exits in CI
           SNAPSHOT_CRON_SCHEDULE: ""
           # Keep PoC runs fast on free tiers
