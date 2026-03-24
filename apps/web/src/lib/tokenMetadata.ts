@@ -7,19 +7,26 @@ export function normalizeTokenAddress(addr: string): string {
   return addr.toLowerCase();
 }
 
+/** DB / indexer placeholder: hex-y “symbol” that is not a real ticker. */
+export function looksLikeHexPlaceholderSymbol(symbol: string, address: string): boolean {
+  const a = normalizeTokenAddress(address);
+  const s = symbol.trim();
+  if (!s) return true;
+  const sl = s.toLowerCase();
+  if (sl === a) return true;
+  if (sl.length <= 12 && a.startsWith(sl)) return true;
+  if (sl.length <= 12 && sl === a.slice(0, sl.length)) return true;
+  if (/^0x[0-9a-f]+$/i.test(s) && s.length >= 4 && s.length < 42) return true;
+  return false;
+}
+
 /**
- * True when DB symbol is missing or is the indexer’s address-prefix placeholder
- * (or a short 0x-hex fragment of the address), so we should read ERC20 metadata on-chain.
+ * True when we should hit RPC: missing symbol or obvious address/hex placeholder.
  */
 export function needsOnChainTokenMetadata(symbol: string | null | undefined, address: string): boolean {
   const a = normalizeTokenAddress(address);
   if (a === NATIVE_TOKEN_ADDRESS) return false;
-  const s = (symbol ?? "").trim();
-  if (!s) return true;
-  const sl = s.toLowerCase();
-  if (sl === a.slice(0, 6)) return true;
-  if (/^0x[0-9a-f]+$/i.test(s) && a.startsWith(sl) && s.length <= 12) return true;
-  return false;
+  return looksLikeHexPlaceholderSymbol(symbol ?? "", address);
 }
 
 const erc20SymbolStringAbi = [
@@ -91,14 +98,24 @@ async function readSymbolBytes32(client: ReturnType<typeof createPublicClient>, 
     abi: erc20SymbolBytesAbi,
     functionName: "symbol",
   });
-  return stripNullBytes(hexToString(raw as `0x${string}`, { size: 32 }));
+  try {
+    return stripNullBytes(hexToString(raw as `0x${string}`, { size: 32 }));
+  } catch {
+    return "";
+  }
 }
 
 async function readSymbol(client: ReturnType<typeof createPublicClient>, addr: `0x${string}`): Promise<string> {
   try {
-    return await readSymbolString(client, addr);
+    const s = await readSymbolString(client, addr);
+    if (s) return s;
   } catch {
+    /* try bytes32 */
+  }
+  try {
     return await readSymbolBytes32(client, addr);
+  } catch {
+    return "";
   }
 }
 
@@ -142,6 +159,12 @@ export function createMonadPublicClient(rpcUrl: string, chainId: number) {
   return createPublicClient({ chain, transport: http(rpcUrl) });
 }
 
+function shortenDisplayLabel(s: string, max = 24): string {
+  const t = s.trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, max - 1)}…`;
+}
+
 export async function readErc20Metadata(
   client: ReturnType<typeof createPublicClient>,
   address: string,
@@ -151,21 +174,37 @@ export async function readErc20Metadata(
     return { address: a, symbol: "MON", name: "MON", decimals: 18 };
   }
   const addr = a as `0x${string}`;
+
+  let decimals = 18;
   try {
-    const [symbol, decimals, name] = await Promise.all([
-      readSymbol(client, addr),
-      client
-        .readContract({ address: addr, abi: erc20DecimalsAbi, functionName: "decimals" })
-        .then((d) => Number(d))
-        .catch(() => 18),
-      readName(client, addr).catch(() => undefined),
-    ]);
-    if (!symbol) return null;
-    const dec = Number.isFinite(decimals) && decimals >= 0 ? decimals : 18;
-    return { address: a, symbol, name, decimals: dec };
+    const d = await client.readContract({ address: addr, abi: erc20DecimalsAbi, functionName: "decimals" });
+    const n = Number(d);
+    if (Number.isFinite(n) && n >= 0 && n <= 255) decimals = n;
   } catch {
-    return null;
+    /* default */
   }
+
+  const rawSymbol = (await readSymbol(client, addr).catch(() => "")).trim();
+  const name = (await readName(client, addr).catch(() => undefined))?.trim();
+
+  let symbol = rawSymbol;
+  if (!symbol || looksLikeHexPlaceholderSymbol(symbol, a)) {
+    symbol = "";
+  }
+
+  if (!symbol && name) {
+    symbol = shortenDisplayLabel(name, 28);
+  }
+
+  if (!symbol) return null;
+
+  const dec = decimals;
+  return {
+    address: a,
+    symbol,
+    name: name && name !== symbol ? name : undefined,
+    decimals: dec,
+  };
 }
 
 /** Resolve many addresses with bounded concurrency (RPC-friendly). */
@@ -176,9 +215,10 @@ export async function resolveTokenMetadataMap(
   concurrency = 6,
 ): Promise<Map<string, ResolvedTokenMeta>> {
   const out = new Map<string, ResolvedTokenMeta>();
-  if (!rpcUrl?.trim() || addresses.length === 0) return out;
+  const url = rpcUrl?.trim();
+  if (!url || addresses.length === 0) return out;
 
-  const client = createMonadPublicClient(rpcUrl.trim(), chainId);
+  const client = createMonadPublicClient(url, chainId);
   const uniq = [...new Set(addresses.map(normalizeTokenAddress))];
 
   for (let i = 0; i < uniq.length; i += concurrency) {
@@ -211,8 +251,15 @@ export async function persistTokenMetadataToDb(db: Pool, meta: ResolvedTokenMeta
   );
 }
 
-export function getMonadRpcConfig(): { rpcUrl: string | undefined; chainId: number } {
-  const rpcUrl = process.env.MONAD_RPC_URL?.trim();
-  const chainId = Number(process.env.MONAD_CHAIN_ID ?? "143");
-  return { rpcUrl: rpcUrl || undefined, chainId: Number.isFinite(chainId) && chainId > 0 ? chainId : 143 };
+/**
+ * Prefer private MONAD_RPC_URL in production; fall back to NEXT_PUBLIC_* or the public Monad RPC
+ * so token metadata resolution still works when only DATABASE_URL was copied to Vercel.
+ */
+export function getMonadRpcConfig(): { rpcUrl: string; chainId: number } {
+  const rpcUrl =
+    process.env.MONAD_RPC_URL?.trim() ||
+    process.env.NEXT_PUBLIC_MONAD_RPC_URL?.trim() ||
+    "https://rpc.monad.xyz";
+  const chainId = Number(process.env.MONAD_CHAIN_ID ?? process.env.NEXT_PUBLIC_MONAD_CHAIN_ID ?? "143");
+  return { rpcUrl, chainId: Number.isFinite(chainId) && chainId > 0 ? chainId : 143 };
 }
