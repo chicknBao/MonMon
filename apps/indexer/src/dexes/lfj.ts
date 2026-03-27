@@ -1,13 +1,18 @@
 import type { PoolSnapshot, TokenDepthSnapshot } from "@monmon/shared";
+import { formatUnits } from "@monmon/shared";
 import type { Pool } from "pg";
-import { createPublicClient, decodeEventLog, http, defineChain } from "viem";
+import { createPublicClient } from "viem";
 import type { Env } from "../config.js";
+import { createMonadPublicClient } from "../monadPublicClient.js";
 import { upsertPool, upsertToken, type PoolMeta, type TokenMeta } from "../repositories/catalog.js";
-import { upsertPoolSnapshot, upsertTokenDepthSnapshot } from "../repositories/snapshots.js";
+import {
+  upsertPoolSnapshot,
+  upsertPoolSwapDepthSnapshot,
+  upsertTokenDepthSnapshot,
+} from "../repositories/snapshots.js";
 
-// LBFactory / LBRouter / LBQuoter (LFJ v2.2)
+// LBFactory / LBRouter (LFJ v2.2; per-pool quotes use router getSwapOut)
 const LBF_FACTORY = "0xb43120c4745967fa9b93E79C149E66B0f2D6Fe0c";
-const LBP_QUOTER = "0x9A550a522BBaDFB69019b0432800Ed17855A51C3";
 const LB_ROUTER = "0x18556DA13313f3532c54711497A8FedAC273220E";
 
 const lbfactoryAbi = [
@@ -54,6 +59,24 @@ const lbPairAbi = [
   },
 ] as const;
 
+const lbRouterGetSwapOutAbi = [
+  {
+    type: "function",
+    name: "getSwapOut",
+    stateMutability: "view",
+    inputs: [
+      { name: "LBPair", type: "address" },
+      { name: "amountIn", type: "uint128" },
+      { name: "swapForY", type: "bool" },
+    ],
+    outputs: [
+      { name: "amountInLeft", type: "uint128" },
+      { name: "amountOut", type: "uint128" },
+      { name: "fee", type: "uint128" },
+    ],
+  },
+] as const;
+
 const erc20Abi = [
   {
     type: "function",
@@ -94,6 +117,20 @@ function parseBandList(bands: string): number[] {
     .filter(Boolean)
     .map((s) => Number(s))
     .filter((n) => Number.isFinite(n) && n > 0 && n < 20000);
+}
+
+const MAX_U128 = (1n << 128n) - 1n;
+
+function toUint128(n: bigint): bigint {
+  if (n <= 0n) return 0n;
+  return n > MAX_U128 ? MAX_U128 : n;
+}
+
+function amountInRawForBand(balanceIn: bigint, bandBps: number): bigint {
+  if (balanceIn === 0n) return 0n;
+  const raw = (balanceIn * BigInt(bandBps)) / 10000n;
+  if (raw === 0n) return 0n;
+  return raw < balanceIn ? raw : balanceIn - 1n;
 }
 
 function formatScaledUsd18ToPostgres(valueScaled18: bigint): string {
@@ -146,22 +183,12 @@ function spotPriceTokenYPerTokenXScaled18(params: {
   return numerator / reserveX;
 }
 
-export async function runLfjDepthSnapshot(params: { env: Env; db: Pool }) {
-  const { env, db } = params;
+export async function runLfjDepthSnapshot(params: { env: Env; db: Pool; snapshotTs?: string }) {
+  const { env, db, snapshotTs } = params;
   const bandList = parseBandList(env.BAND_BPS_LIST);
   if (bandList.length === 0) throw new Error("BAND_BPS_LIST produced no valid bands");
 
-  const monadChain = defineChain({
-    id: env.MONAD_CHAIN_ID,
-    name: "Monad",
-    nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
-    rpcUrls: { default: { http: [env.MONAD_RPC_URL] } },
-  });
-
-  const publicClient = createPublicClient({
-    chain: monadChain,
-    transport: http(env.MONAD_RPC_URL),
-  });
+  const publicClient = createMonadPublicClient(env);
 
   const pairCount = Number(
     await publicClient.readContract({
@@ -174,7 +201,7 @@ export async function runLfjDepthSnapshot(params: { env: Env; db: Pool }) {
   const maxPairs = Math.min(pairCount, env.DISCOVERY_MAX_POOLS);
   console.log(`LFJ factory reports ${pairCount} pairs; snapshotting up to ${maxPairs}`);
 
-  const nowIso = new Date().toISOString();
+  const nowIso = snapshotTs ?? new Date().toISOString();
 
   const pairAddresses: string[] = [];
   for (let i = 0; i < maxPairs; i++) {
@@ -304,6 +331,66 @@ export async function runLfjDepthSnapshot(params: { env: Env; db: Pool }) {
             ]);
           }),
         );
+
+        const depthSimpleBps = env.DEPTH_SIMPLE_BAND_BPS;
+        const reserveXb = reserveX as bigint;
+        const reserveYb = reserveY as bigint;
+
+        const swapRows: Array<ReturnType<typeof upsertPoolSwapDepthSnapshot>> = [];
+
+        for (const [src, dst, reserveIn, swapForY] of [
+          [tokenXMeta, tokenYMeta, reserveXb, true] as const,
+          [tokenYMeta, tokenXMeta, reserveYb, false] as const,
+        ]) {
+          const amountSimpleIn = toUint128(amountInRawForBand(reserveIn, depthSimpleBps));
+          if (amountSimpleIn === 0n) continue;
+
+          let depthSimpleStr: string;
+          try {
+            const q = (await publicClient.readContract({
+              address: LB_ROUTER as `0x${string}`,
+              abi: lbRouterGetSwapOutAbi,
+              functionName: "getSwapOut",
+              args: [pairAddress as `0x${string}`, amountSimpleIn, swapForY],
+            })) as readonly [bigint, bigint, bigint];
+            const amountOut = q[1];
+            depthSimpleStr = formatUnits(amountOut, dst.decimals);
+          } catch {
+            continue;
+          }
+
+          for (const bandBps of bandList) {
+            const amountBandIn = toUint128(amountInRawForBand(reserveIn, bandBps));
+            if (amountBandIn === 0n) continue;
+
+            try {
+              const q = (await publicClient.readContract({
+                address: LB_ROUTER as `0x${string}`,
+                abi: lbRouterGetSwapOutAbi,
+                functionName: "getSwapOut",
+                args: [pairAddress as `0x${string}`, amountBandIn, swapForY],
+              })) as readonly [bigint, bigint, bigint];
+              const amountOut = q[1];
+              const depthBandStr = formatUnits(amountOut, dst.decimals);
+              swapRows.push(
+                upsertPoolSwapDepthSnapshot(db, {
+                  timestamp: nowIso,
+                  dex: "lfj",
+                  poolAddress: pairAddress,
+                  bandBps,
+                  tokenIn: src.tokenAddress,
+                  tokenOut: dst.tokenAddress,
+                  depthSimple: depthSimpleStr,
+                  depthBand: depthBandStr,
+                }),
+              );
+            } catch {
+              // Skip band on revert (illiquid / router guard).
+            }
+          }
+        }
+
+        await Promise.all(swapRows);
       }),
     );
   }

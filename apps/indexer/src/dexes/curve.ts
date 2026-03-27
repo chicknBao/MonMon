@@ -1,8 +1,9 @@
 import type { PoolSnapshot, TokenDepthSnapshot } from "@monmon/shared";
 import { formatUnits } from "@monmon/shared";
 import type { Pool } from "pg";
-import { createPublicClient, http, defineChain } from "viem";
+import { createPublicClient } from "viem";
 import type { Env } from "../config.js";
+import { createMonadPublicClient } from "../monadPublicClient.js";
 
 import { upsertPool, upsertToken, type PoolMeta, type TokenMeta } from "../repositories/catalog.js";
 import {
@@ -408,7 +409,7 @@ async function getDy(
   }
 }
 
-export async function runCurveDepthSnapshot(params: { env: Env; db: Pool }) {
+export async function runCurveDepthSnapshot(params: { env: Env; db: Pool; snapshotTs?: string }) {
   const { env, db } = params;
 
   const registryResolved = resolveCurveRegistry(env);
@@ -421,17 +422,7 @@ export async function runCurveDepthSnapshot(params: { env: Env; db: Pool }) {
   const bandList = parseBandList(env.BAND_BPS_LIST);
   if (bandList.length === 0) throw new Error("BAND_BPS_LIST produced no valid bands");
 
-  const monadChain = defineChain({
-    id: env.MONAD_CHAIN_ID,
-    name: "Monad",
-    nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
-    rpcUrls: { default: { http: [env.MONAD_RPC_URL] } },
-  });
-
-  const publicClient = createPublicClient({
-    chain: monadChain,
-    transport: http(env.MONAD_RPC_URL),
-  });
+  const publicClient = createMonadPublicClient(env);
 
   const fromRegistry =
     registryResolved && /^0x[0-9a-f]{40}$/.test(registryResolved)
@@ -449,7 +440,7 @@ export async function runCurveDepthSnapshot(params: { env: Env; db: Pool }) {
   const registryAddr =
     registryResolved && /^0x[0-9a-f]{40}$/.test(registryResolved) ? (registryResolved as `0x${string}`) : null;
 
-  const nowIso = new Date().toISOString();
+  const nowIso = params.snapshotTs ?? new Date().toISOString();
   const depthSimpleBps = env.DEPTH_SIMPLE_BAND_BPS;
 
   for (let i = 0; i < poolAddresses.length; i += env.SNAPSHOT_BATCH_SIZE) {

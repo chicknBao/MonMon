@@ -1,7 +1,8 @@
 import type { Pool } from "pg";
 import type { Env } from "../config.js";
+import { createMonadPublicClient } from "../monadPublicClient.js";
 
-import { createPublicClient, defineChain, http } from "viem";
+import { createPublicClient } from "viem";
 import { formatUnits, isUniswapV4PoolAllowed, uniswapV3DirectionalMaxOutputRaw } from "@monmon/shared";
 import { upsertPool, upsertToken, type PoolMeta, type TokenMeta } from "../repositories/catalog.js";
 import { upsertPoolSwapDepthSnapshot } from "../repositories/snapshots.js";
@@ -115,7 +116,7 @@ async function readTokenMeta(publicClient: ReturnType<typeof createPublicClient>
   return { tokenAddress: addr, symbol: String(symbol), decimals: Number(decimals) };
 }
 
-export async function runUniswapV4DepthSnapshot(params: { env: Env; db: Pool }) {
+export async function runUniswapV4DepthSnapshot(params: { env: Env; db: Pool; snapshotTs?: string }) {
   const { env, db } = params;
 
   const poolIds = parsePoolIds(env.UNISWAP_V4_POOL_IDS);
@@ -124,22 +125,12 @@ export async function runUniswapV4DepthSnapshot(params: { env: Env; db: Pool }) 
   if (!env.UNISWAP_V4_STATE_VIEW) throw new Error("UNISWAP_V4_STATE_VIEW is required for uniswap_v4 snapshots");
   if (!env.UNISWAP_V4_POSITION_MANAGER) throw new Error("UNISWAP_V4_POSITION_MANAGER is required for uniswap_v4 snapshots");
 
-  const monadChain = defineChain({
-    id: env.MONAD_CHAIN_ID,
-    name: "Monad",
-    nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
-    rpcUrls: { default: { http: [env.MONAD_RPC_URL] } },
-  });
-
-  const publicClient = createPublicClient({
-    chain: monadChain,
-    transport: http(env.MONAD_RPC_URL),
-  });
+  const publicClient = createMonadPublicClient(env);
 
   const bandList = parseBandList(env.BAND_BPS_LIST);
   if (bandList.length === 0) return;
 
-  const nowIso = new Date().toISOString();
+  const nowIso = params.snapshotTs ?? new Date().toISOString();
   const depthSimpleBps = env.DEPTH_SIMPLE_BAND_BPS;
 
   for (const poolId of poolIds) {

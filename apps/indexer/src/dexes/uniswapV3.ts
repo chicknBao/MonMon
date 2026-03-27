@@ -10,11 +10,9 @@ import type { Pool } from "pg";
 import {
   createPublicClient,
   decodeEventLog,
-  http,
   toBytes,
   toHex,
   keccak256,
-  defineChain,
   encodeAbiParameters,
   getCreate2Address,
 } from "viem";
@@ -26,6 +24,7 @@ import {
   upsertPoolSwapDepthSnapshot,
 } from "../repositories/snapshots.js";
 import type { Env } from "../config.js";
+import { createMonadPublicClient } from "../monadPublicClient.js";
 
 const UNISWAP_V3_FACTORY = "0x204faca1764b154221e35c0d20abb3c525710498";
 
@@ -521,7 +520,7 @@ function computeTokenUsdPriceScaled18(params: {
   return undefined;
 }
 
-export async function runUniswapV3DepthSnapshot(params: { env: Env; db: Pool }) {
+export async function runUniswapV3DepthSnapshot(params: { env: Env; db: Pool; snapshotTs?: string }) {
   const { env, db } = params;
 
   const bandList = parseBandList(env.BAND_BPS_LIST);
@@ -530,19 +529,7 @@ export async function runUniswapV3DepthSnapshot(params: { env: Env; db: Pool }) 
   }
   const depthSimpleBandBps = env.DEPTH_SIMPLE_BAND_BPS;
 
-  const monadChain = defineChain({
-    id: env.MONAD_CHAIN_ID,
-    name: "Monad",
-    nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
-    rpcUrls: {
-      default: { http: [env.MONAD_RPC_URL] },
-    },
-  });
-
-  const publicClient = createPublicClient({
-    chain: monadChain,
-    transport: http(env.MONAD_RPC_URL),
-  });
+  const publicClient = createMonadPublicClient(env);
 
   const latestBlock = await publicClient.getBlockNumber();
   const lookback = BigInt(env.DISCOVERY_LOOKBACK_BLOCKS);
@@ -625,7 +612,7 @@ export async function runUniswapV3DepthSnapshot(params: { env: Env; db: Pool }) 
 
   console.log(`Uniswap v3 discovered ${pools.size} pools (logs + WMON seed via CREATE2)`);
 
-  const nowIso = new Date().toISOString();
+  const nowIso = params.snapshotTs ?? new Date().toISOString();
 
   const poolEntries = Array.from(pools.values());
   for (let i = 0; i < poolEntries.length; i += env.SNAPSHOT_BATCH_SIZE) {

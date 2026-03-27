@@ -87,6 +87,24 @@ CREATE INDEX IF NOT EXISTS idx_pool_swap_depth_snapshots_dex_inout_ts
   ON pool_swap_depth_snapshots (dex, token_in, token_out, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_token_top_n_dex_ts ON token_top_n (dex, ts DESC);
 
+-- Lending snapshots: "borrowed against collateral" totals.
+-- This dashboard currently focuses on MON/WMON collateral usage across lend markets.
+CREATE TABLE IF NOT EXISTS lend_market_collateral_snapshots (
+  ts TIMESTAMPTZ NOT NULL,
+  protocol TEXT NOT NULL,
+  market_id TEXT NOT NULL,
+  collateral_token TEXT NOT NULL,
+  loan_token TEXT NOT NULL,
+  borrowed_amount NUMERIC NOT NULL,
+  borrowed_amount_usd NUMERIC,
+  PRIMARY KEY (ts, protocol, market_id, collateral_token, loan_token)
+);
+
+CREATE INDEX IF NOT EXISTS idx_lend_market_collateral_snapshots_protocol_ts
+  ON lend_market_collateral_snapshots (protocol, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_lend_market_collateral_snapshots_collateral_ts
+  ON lend_market_collateral_snapshots (collateral_token, ts DESC);
+
 -- Convert to hypertables (idempotent) when TimescaleDB is available.
 DO $$
 BEGIN
@@ -95,11 +113,12 @@ BEGIN
     PERFORM create_hypertable('token_depth_snapshots', 'ts', if_not_exists => TRUE);
     PERFORM create_hypertable('pool_swap_depth_snapshots', 'ts', if_not_exists => TRUE);
     PERFORM create_hypertable('token_top_n', 'ts', if_not_exists => TRUE);
+    PERFORM create_hypertable('lend_market_collateral_snapshots', 'ts', if_not_exists => TRUE);
   END IF;
 END $$;
 
 -- Pre-seed DEX names so adapters can insert without extra migrations.
 INSERT INTO dexes(name)
-VALUES ('uniswap_v3'), ('uniswap_v4'), ('curve'), ('balancer'), ('lfj')
+VALUES ('uniswap_v3'), ('uniswap_v4'), ('curve'), ('balancer'), ('lfj'), ('pancake')
 ON CONFLICT (name) DO NOTHING;
 

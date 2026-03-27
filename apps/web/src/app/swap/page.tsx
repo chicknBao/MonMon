@@ -13,7 +13,7 @@ const tokenInOptions = [
 ];
 
 const bandOptions = [25, 50, 100, 200, 500];
-const dexOptions = ["uniswap_v3", "uniswap_v4", "curve", "balancer", "lfj", "all"] as const;
+const dexOptions = ["uniswap_v3", "uniswap_v4", "curve", "balancer", "lfj", "pancake", "all"] as const;
 
 type TotalRow = {
   tokenOut: string;
@@ -74,12 +74,14 @@ export default function SwapPage() {
   const [latestTs, setLatestTs] = useState<string | null>(null);
 
   const queryUrl = useMemo(() => {
+    const limitTokens = dex === "all" ? "100" : "20";
+    const limitPools = dex === "all" ? "200" : "50";
     const params = new URLSearchParams({
       dex,
       tokenIn,
       bandBps: String(bandBps),
-      limitTokens: "20",
-      limitPools: "50",
+      limitTokens,
+      limitPools,
     });
     return `/api/top-swap-outputs?${params.toString()}`;
   }, [bandBps, dex, tokenIn]);

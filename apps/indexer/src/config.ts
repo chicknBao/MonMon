@@ -27,15 +27,28 @@ export const envSchema = z.object({
   CURVE_REGISTRY: z.string().optional(),
   CURVE_POOL_ADDRESSES: z.string().optional(),
 
+  // Balancer V3 on Monad: optional overrides (defaults match Balancer docs for chain 143).
+  BALANCER_V3_VAULT: z.string().optional(),
+  BALANCER_V3_ROUTER: z.string().optional(),
+  BALANCER_V3_FACTORY_ADDRESSES: z.string().optional(),
+
   // Snapshot scheduling (optional). If unset, indexer runs once and exits.
   SNAPSHOT_CRON_SCHEDULE: z.string().optional(),
   SNAPSHOT_TIMEZONE: z.string().optional().default("UTC"),
+
+  // Lending: optional Neverland HyperIndex / Hasura GraphQL (see neverland-hyperindex schema).
+  NEVERLAND_LENDING_GRAPHQL_URL: z.string().optional(),
+  NEVERLAND_LENDING_GRAPHQL_SECRET: z.string().optional(),
+  NEVERLAND_LENDING_GRAPHQL_PAGE_SIZE: z.coerce.number().int().positive().default(500),
+  NEVERLAND_LENDING_GRAPHQL_MAX_USERS: z.coerce.number().int().positive().default(5000),
+
+  // Lending: optional comma-separated Curvance MarketManager addresses (WMON collateral markets).
+  CURVANCE_WMON_MARKET_MANAGERS: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
 
 export function loadEnv(): Env {
-  const raw = process.env;
-  return envSchema.parse(raw);
+  return envSchema.parse(process.env);
 }
 

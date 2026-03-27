@@ -9,7 +9,7 @@ import {
   resolveTokenMetadataMap,
 } from "../../../lib/tokenMetadata";
 
-const DEXES = ["uniswap_v3", "uniswap_v4", "curve", "balancer", "lfj"] as const;
+const DEXES = ["uniswap_v3", "uniswap_v4", "curve", "balancer", "lfj", "pancake"] as const;
 type DexName = (typeof DEXES)[number] | "all";
 
 /** Wrapped MON on Monad — Curve pools use this as the coin, not native 0x0. */
@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
     const tokenIn = String(searchParams.get("tokenIn") ?? "").toLowerCase();
     const bandBps = parseBandBps(searchParams.get("bandBps"));
     const limitTokens = parseLimit(searchParams.get("limitTokens"), 1, 100);
-    const limitPools = parseLimit(searchParams.get("limitPools"), 1, 200);
+    const limitPools = parseLimit(searchParams.get("limitPools"), 1, dex === "all" ? 500 : 200);
 
     if (!tokenIn) {
       return NextResponse.json({ error: "tokenIn is required" }, { status: 400 });

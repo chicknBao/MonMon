@@ -1,5 +1,6 @@
+import { normalizeEvmRpcHttpUrl } from "@monmon/shared";
 import type { Pool } from "pg";
-import { createPublicClient, defineChain, hexToString, http } from "viem";
+import { createPublicClient, defineChain, hexToString, http, webSocket, type PublicClient } from "viem";
 
 export const NATIVE_TOKEN_ADDRESS = "0x0000000000000000000000000000000000000000";
 
@@ -149,14 +150,21 @@ export type ResolvedTokenMeta = {
   decimals: number;
 };
 
-export function createMonadPublicClient(rpcUrl: string, chainId: number) {
+export function createMonadPublicClient(rpcUrl: string, chainId: number): PublicClient {
+  const r = rpcUrl.trim();
   const chain = defineChain({
     id: chainId,
     name: "Monad",
     nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
-    rpcUrls: { default: { http: [rpcUrl] } },
+    rpcUrls: {
+      default: {
+        http: [r.startsWith("http") ? r : normalizeEvmRpcHttpUrl(r)],
+      },
+    },
   });
-  return createPublicClient({ chain, transport: http(rpcUrl) });
+  const transport =
+    r.startsWith("wss://") || r.startsWith("ws://") ? webSocket(r) : http(normalizeEvmRpcHttpUrl(r));
+  return createPublicClient({ chain, transport });
 }
 
 function shortenDisplayLabel(s: string, max = 24): string {
