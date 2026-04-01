@@ -9,10 +9,17 @@ const MON_NATIVE = "0x0000000000000000000000000000000000000000";
 
 const MORPHO_GRAPHQL = "https://blue-api.morpho.org/graphql";
 
-/** Curvance isolated markets that pair **cWMON** (WMON collateral) with a borrowable asset (doc: DeFi Bluechip). */
+/**
+ * Curvance MarketManager addresses that list **cWMON** (asset = WMON) plus a borrow market.
+ * Source: https://docs.curvance.com/cve/protocol-overview/contract-addresses (Monad mainnet).
+ * Omit managers that only list LST+WMON with zero borrow activity if you want smaller RPC load; override via CURVANCE_WMON_MARKET_MANAGERS.
+ */
 const DEFAULT_CURVANCE_WMON_COLLATERAL_MARKET_MANAGERS = [
-  "0xa6a2a92f126b79ee0804845ee6b52899b4491093", // WMON / USDC
-  "0xd6365555f6a697c7c295ba741100aa644ce28545", // WMON / AUSD (see Curvance docs; override via env if needed)
+  "0xa6a2a92f126b79ee0804845ee6b52899b4491093", // DeFi Bluechip: WMON / USDC
+  "0x5ea0a1cf3501c954b64902c5e92100b8a2cab1ac", // aprMON / WMON
+  "0xe1c24b2e93230fbe33d32ba38eca3218284143e2", // shMON / WMON
+  "0xe5970cdb1916b2ccf6185c86c174eee2d330d05b", // sMON / WMON
+  "0xb00aff53a4df2b4e2f97a3d9ffadb55564c8e42f", // gMON / WMON
 ];
 
 function normalizeAddress(a: string): string {
@@ -278,6 +285,7 @@ export async function runCurvanceLendingSnapshot(params: {
   const client = createMonadPublicClient(env);
   const managers = parseCurvanceMarketManagers(env);
   let upserted = 0;
+  console.log(`lending: curvance scanning ${managers.length} market manager(s)`);
 
   for (const manager of managers) {
     let cTokens: readonly `0x${string}`[];
@@ -336,7 +344,7 @@ export async function runCurvanceLendingSnapshot(params: {
       await upsertLendMarketCollateralSnapshot(db, {
         timestamp: snapshotTs,
         protocol: "curvance",
-        marketId: `${manager}:${underlying}`,
+        marketId: `${normalizeAddress(manager)}:${underlying}`,
         collateralToken: normalizeAddress(WMON),
         loanToken: underlying,
         borrowedAmount,
@@ -386,49 +394,120 @@ export async function runNeverlandLendingSnapshot(params: {
   snapshotTs: string;
 }): Promise<number> {
   const { env, db, snapshotTs } = params;
-  const url = env.NEVERLAND_LENDING_GRAPHQL_URL?.trim();
-  if (!url) {
+  const urlRaw = env.NEVERLAND_LENDING_GRAPHQL_URL?.trim();
+  if (!urlRaw) {
     console.log("lending: neverland skipped (set NEVERLAND_LENDING_GRAPHQL_URL to a Neverland HyperIndex GraphQL endpoint)");
     return 0;
   }
+  const url = urlRaw;
 
   const adminSecret = env.NEVERLAND_LENDING_GRAPHQL_SECRET?.trim();
   const pageSize = env.NEVERLAND_LENDING_GRAPHQL_PAGE_SIZE;
   const maxUsers = env.NEVERLAND_LENDING_GRAPHQL_MAX_USERS;
 
-  const wmonLike = `${normalizeAddress(WMON)}-%`;
+  const wmonLower = normalizeAddress(WMON);
+  const wmonLike = `${wmonLower}-%`;
 
-  const users = new Set<string>();
-  for (let offset = 0; users.size < maxUsers; offset += pageSize) {
-    const data = await neverlandGraphql(
+  /** Prefer Reserve.underlyingAsset match (Envio/Neverland schema); fall back to reserve_id prefix. */
+  let wmonReserveIds: string[] = [];
+  try {
+    const resData = await neverlandGraphql(
       url,
       {
         query: `
-          query WmonCollateralUsers($like: String!, $limit: Int!, $offset: Int!) {
-            UserReserve(
-              where: {
-                usageAsCollateralEnabledOnUser: { _eq: true }
-                reserve_id: { _ilike: $like }
-              }
-              limit: $limit
-              offset: $offset
-            ) {
-              user_id
+          query WmonReserves($wmon: String!) {
+            Reserve(where: { underlyingAsset: { _ilike: $wmon } }, limit: 50) {
+              id
             }
           }
         `,
-        variables: { like: wmonLike, limit: pageSize, offset },
+        variables: { wmon: wmonLower },
       },
       adminSecret,
     );
+    wmonReserveIds = ((resData?.Reserve ?? []) as { id: string }[])
+      .map((r) => r.id)
+      .filter(Boolean);
+  } catch {
+    wmonReserveIds = [];
+  }
 
-    const batch = (data?.UserReserve ?? []) as NeverlandGraphUser[];
-    if (batch.length === 0) break;
-    for (const row of batch) {
-      if (row.user_id) users.add(normalizeAddress(row.user_id));
-      if (users.size >= maxUsers) break;
+  const users = new Set<string>();
+
+  async function collectUsersByReserveIds(reserveIds: string[]) {
+    for (let offset = 0; users.size < maxUsers; offset += pageSize) {
+      const data = await neverlandGraphql(
+        url,
+        {
+          query: `
+            query NeverlandUsersByReserve($reserveIds: [String!]!, $limit: Int!, $offset: Int!) {
+              UserReserve(
+                where: {
+                  usageAsCollateralEnabledOnUser: { _eq: true }
+                  reserve_id: { _in: $reserveIds }
+                }
+                limit: $limit
+                offset: $offset
+              ) {
+                user_id
+              }
+            }
+          `,
+          variables: { reserveIds, limit: pageSize, offset },
+        },
+        adminSecret,
+      );
+
+      const batch = (data?.UserReserve ?? []) as NeverlandGraphUser[];
+      if (batch.length === 0) break;
+      for (const row of batch) {
+        if (row.user_id) users.add(normalizeAddress(row.user_id));
+        if (users.size >= maxUsers) break;
+      }
+      if (batch.length < pageSize) break;
     }
-    if (batch.length < pageSize) break;
+  }
+
+  async function collectUsersByReserveIdLike(like: string) {
+    for (let offset = 0; users.size < maxUsers; offset += pageSize) {
+      const data = await neverlandGraphql(
+        url,
+        {
+          query: `
+            query NeverlandUsersByReserveLike($like: String!, $limit: Int!, $offset: Int!) {
+              UserReserve(
+                where: {
+                  usageAsCollateralEnabledOnUser: { _eq: true }
+                  reserve_id: { _ilike: $like }
+                }
+                limit: $limit
+                offset: $offset
+              ) {
+                user_id
+              }
+            }
+          `,
+          variables: { like, limit: pageSize, offset },
+        },
+        adminSecret,
+      );
+
+      const batch = (data?.UserReserve ?? []) as NeverlandGraphUser[];
+      if (batch.length === 0) break;
+      for (const row of batch) {
+        if (row.user_id) users.add(normalizeAddress(row.user_id));
+        if (users.size >= maxUsers) break;
+      }
+      if (batch.length < pageSize) break;
+    }
+  }
+
+  if (wmonReserveIds.length > 0) {
+    await collectUsersByReserveIds(wmonReserveIds);
+  }
+
+  if (users.size === 0) {
+    await collectUsersByReserveIdLike(wmonLike);
   }
 
   if (users.size === 0) {
@@ -451,7 +530,7 @@ export async function runNeverlandLendingSnapshot(params: {
         query: `
           query Debts($users: [String!]!) {
             UserReserve(
-              where: { user_id: { _in: $users }, currentTotalDebt: { _gt: "0" } }
+              where: { user_id: { _in: $users }, currentTotalDebt: { _neq: "0" } }
             ) {
               currentTotalDebt
               reserve_id
@@ -466,10 +545,7 @@ export async function runNeverlandLendingSnapshot(params: {
     const rows = (data?.UserReserve ?? []) as Array<{ currentTotalDebt: string; reserve_id: string }>;
     for (const row of rows) {
       const loanUnderlying = reserveIdUnderlying(row.reserve_id);
-      if (loanUnderlying === normalizeAddress(WMON) || loanUnderlying === MON_NATIVE) {
-        /* still debt denominated in WMON / MON */
-      }
-      const raw = BigInt(row.currentTotalDebt);
+      const raw = BigInt(String(row.currentTotalDebt ?? "0"));
       if (raw <= 0n) continue;
 
       const prev = byLoan.get(loanUnderlying) ?? { sum: 0n, decimals: 18 };
@@ -504,13 +580,17 @@ export async function runNeverlandLendingSnapshot(params: {
 
 export async function runGearboxLendingSnapshot(_params: { env: Env; db: Pool; snapshotTs: string }): Promise<number> {
   void _params;
-  console.log("lending: gearbox skipped (no public indexed API wired yet; set GEARBOX_LENDING_GRAPHQL_URL when available)");
+  console.log(
+    "lending: gearbox skipped (no hosted Monad GraphQL/subgraph documented; integrate via on-chain events or Gearbox backend patterns when a URL exists)",
+  );
   return 0;
 }
 
 export async function runEulerLendingSnapshot(_params: { env: Env; db: Pool; snapshotTs: string }): Promise<number> {
   void _params;
-  console.log("lending: euler skipped (no public Monad lens/subgraph URL wired yet; set EULER_LENDING_GRAPHQL_URL when available)");
+  console.log(
+    "lending: euler skipped (Euler’s public subgraph list does not include Monad yet; wire EULER_LENDING_GRAPHQL_URL when deployed)",
+  );
   return 0;
 }
 
@@ -524,16 +604,28 @@ export async function runLendingSnapshot(params: { env: Env; db: Pool; snapshotT
   try {
     const morphoN = await runMorphoLendingSnapshot({ env, db, snapshotTs: nowIso });
     console.log(`lending: upserted ${morphoN} Morpho markets`);
+  } catch (err) {
+    console.error("lending: Morpho snapshot failed", err);
+  }
 
+  try {
     const curvanceN = await runCurvanceLendingSnapshot({ env, db, snapshotTs: nowIso });
     console.log(`lending: upserted ${curvanceN} Curvance loan totals`);
+  } catch (err) {
+    console.error("lending: Curvance snapshot failed", err);
+  }
 
+  try {
     const neverlandN = await runNeverlandLendingSnapshot({ env, db, snapshotTs: nowIso });
     console.log(`lending: upserted ${neverlandN} Neverland loan totals (WMON-collateral users)`);
+  } catch (err) {
+    console.error("lending: Neverland snapshot failed", err);
+  }
 
+  try {
     await runGearboxLendingSnapshot({ env, db, snapshotTs: nowIso });
     await runEulerLendingSnapshot({ env, db, snapshotTs: nowIso });
   } catch (err) {
-    console.error("lending: snapshot failed", err);
+    console.error("lending: Gearbox/Euler step failed", err);
   }
 }
