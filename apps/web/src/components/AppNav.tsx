@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const links = [
+  { href: "/dashboard", label: "Dashboard" },
   { href: "/swap", label: "Swap" },
   { href: "/lend", label: "Lend" },
 ] as const;
@@ -30,7 +31,7 @@ export function AppNav() {
       >
         <div style={{ display: "flex", alignItems: "center", marginRight: 12, padding: "12px 0" }}>
           <Link
-            href="/swap"
+            href="/dashboard"
             style={{
               fontWeight: 700,
               letterSpacing: "-0.02em",
