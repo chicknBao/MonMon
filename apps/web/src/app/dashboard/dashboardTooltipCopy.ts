@@ -41,4 +41,19 @@ export const dashboardTooltips = {
 
   liquidityByDex:
     "Each row is one DEX and our dollar estimate of MON-side depth at ±100 bps in the latest snapshot. It shows where sell-side liquidity is concentrated, not how good execution will be.",
+
+  chartHistoryTrend:
+    "Visual of the same daily UTC rollup as the table: borrow dollars vs liquidity at ±100 bps, plus the ratio. Hover a point for exact values; the table lists every day.",
+
+  chartMorphoDistribution:
+    "Same bucket counts as the table, shown as bars so you can see how many Morpho positions sit in each health-factor range at a glance.",
+
+  chartStressBands:
+    "Liquidity estimate per band (bars) and borrow-to-liquidity ratio (line). Tighter bands count less depth; this complements the numeric table.",
+
+  chartBorrowProtocol:
+    "Borrow dollars by lending protocol from the latest snapshot. Bars match the table below.",
+
+  chartDexLiquidity:
+    "Estimated MON-side liquidity at ±100 bps by DEX. Bars match the table below.",
 } as const;

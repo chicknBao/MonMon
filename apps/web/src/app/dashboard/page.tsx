@@ -2,7 +2,23 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import {
+  BandsLiquidityChart,
+  BorrowByProtocolChart,
+  DexLiquidityChart,
+  HistoryBorrowLiquidityChart,
+  MorphoHistogramChart,
+} from "../../components/dashboard/DashboardCharts";
 import { DashboardInfoTip } from "../../components/DashboardInfoTip";
+import {
+  buildBandChartRows,
+  buildDexChartRows,
+  buildHistoryChartData,
+  buildProtocolChartRows,
+  MORPHO_HISTOGRAM_LABELS,
+  orderedMorphoHistogramEntries,
+} from "./dashboardChartData";
+import { formatDepthNumber } from "./dashboardFormat";
 import { dashboardTooltips } from "./dashboardTooltipCopy";
 
 const MON = "0x0000000000000000000000000000000000000000";
@@ -44,29 +60,6 @@ type HistoryRow = {
   ratio_band_100: string | null;
 };
 
-function formatDepthNumber(value: string | number) {
-  const raw = typeof value === "number" ? String(value) : value;
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return raw;
-  const abs = Math.abs(n);
-  if (abs === 0) return "0";
-
-  if (abs >= 1e3) {
-    const formatted = new Intl.NumberFormat("en-US", {
-      notation: "compact",
-      maximumFractionDigits: 2,
-      compactDisplay: "short",
-    }).format(n);
-    return formatted.replace(/([KMBT])$/, (m, p1) => ` ${String(p1).toLowerCase()}`.trim());
-  }
-
-  const maxFractionDigits = abs >= 1 ? 6 : abs >= 0.1 ? 6 : abs >= 0.01 ? 7 : abs >= 0.001 ? 8 : 9;
-  const formatted = new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: maxFractionDigits,
-  }).format(n);
-  return formatted.replace(/(\.\d*?[1-9])0+$/g, "$1").replace(/\.0+$/g, "");
-}
-
 function isStale(iso: string | null): boolean {
   if (!iso) return true;
   const t = Date.parse(iso);
@@ -82,16 +75,6 @@ function swapMoreInfoHref(bandBps: number) {
   });
   return `/swap?${p.toString()}`;
 }
-
-const HISTOGRAM_LABELS: Record<string, string> = {
-  lt_1: "HF below 1",
-  gte_1_lt_1_05: "1.0 – 1.05",
-  gte_1_05_lt_1_1: "1.05 – 1.1",
-  gte_1_1_lt_1_2: "1.1 – 1.2",
-  gte_1_2_lt_1_5: "1.2 – 1.5",
-  gte_1_5: "≥ 1.5",
-  unknown: "Unknown HF",
-};
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -147,7 +130,15 @@ export default function DashboardPage() {
         .sort((a, b) => Number(b.usd) - Number(a.usd))
     : [];
 
-  const histEntries = morpho?.histogram ? Object.entries(morpho.histogram) : [];
+  const morphoHistEntries = morpho?.histogram ? orderedMorphoHistogramEntries(morpho.histogram) : [];
+  const morphoHistChartData = morphoHistEntries.map(([k, v]) => ({
+    label: MORPHO_HISTOGRAM_LABELS[k] ?? k,
+    count: v,
+  }));
+  const historyChartData = buildHistoryChartData(historyRows);
+  const bandChartRows = buildBandChartRows(data.bands);
+  const protocolChartRows = buildProtocolChartRows(data.borrowByProtocol);
+  const dexChartRows = band100 ? buildDexChartRows(band100.liquidityByDexUsd) : [];
 
   return (
     <main style={{ padding: 24, maxWidth: 960 }}>
@@ -241,6 +232,33 @@ export default function DashboardPage() {
           Stress by price band
           <DashboardInfoTip label="Explain price bands" text={dashboardTooltips.stressBands} />
         </h2>
+        {bandChartRows.length > 0 ? (
+          <div
+            style={{
+              marginBottom: 12,
+              padding: "12px 12px 4px",
+              border: "1px solid #e5e5e5",
+              borderRadius: 10,
+              background: "#fafafa",
+            }}
+          >
+            <h3
+              style={{
+                margin: "0 0 8px 0",
+                fontSize: 14,
+                fontWeight: 600,
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                flexWrap: "wrap",
+              }}
+            >
+              Chart
+              <DashboardInfoTip label="Explain stress band chart" text={dashboardTooltips.chartStressBands} />
+            </h3>
+            <BandsLiquidityChart rows={bandChartRows} />
+          </div>
+        ) : null}
         <div style={{ border: "1px solid #e5e5e5", borderRadius: 10, overflow: "hidden" }}>
           <div
             style={{
@@ -298,33 +316,61 @@ export default function DashboardPage() {
             No Morpho rollup in database yet (run indexer after deploy).
           </div>
         ) : (
-          <div style={{ border: "1px solid #e5e5e5", borderRadius: 10, overflow: "hidden" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "stretch" }}>
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "1fr auto",
-                padding: "10px 12px",
-                background: "#f5f5f5",
-                fontWeight: 700,
+                flex: "1 1 300px",
+                minWidth: 0,
+                padding: "12px 12px 4px",
+                border: "1px solid #e5e5e5",
+                borderRadius: 10,
+                background: "#fafafa",
               }}
             >
-              <div>Health factor band</div>
-              <div>Count</div>
+              <h3
+                style={{
+                  margin: "0 0 8px 0",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  flexWrap: "wrap",
+                }}
+              >
+                Distribution
+                <DashboardInfoTip label="Explain Morpho histogram chart" text={dashboardTooltips.chartMorphoDistribution} />
+              </h3>
+              <MorphoHistogramChart data={morphoHistChartData} />
             </div>
-            {histEntries.map(([k, v]) => (
+            <div style={{ flex: "1 1 220px", minWidth: 0, border: "1px solid #e5e5e5", borderRadius: 10, overflow: "hidden" }}>
               <div
-                key={k}
                 style={{
                   display: "grid",
                   gridTemplateColumns: "1fr auto",
                   padding: "10px 12px",
-                  borderTop: "1px solid #efefef",
+                  background: "#f5f5f5",
+                  fontWeight: 700,
                 }}
               >
-                <div>{HISTOGRAM_LABELS[k] ?? k}</div>
-                <div style={{ fontFamily: "monospace" }}>{v}</div>
+                <div>Health factor band</div>
+                <div>Count</div>
               </div>
-            ))}
+              {morphoHistEntries.map(([k, v]) => (
+                <div
+                  key={k}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto",
+                    padding: "10px 12px",
+                    borderTop: "1px solid #efefef",
+                  }}
+                >
+                  <div>{MORPHO_HISTOGRAM_LABELS[k] ?? k}</div>
+                  <div style={{ fontFamily: "monospace" }}>{v}</div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
         {morpho && morpho.topPositions && morpho.topPositions.length > 0 ? (
@@ -381,7 +427,33 @@ export default function DashboardPage() {
         {historyRows.length === 0 ? (
           <div style={{ padding: 12, opacity: 0.7 }}>No rollup rows yet.</div>
         ) : (
-          <div style={{ border: "1px solid #e5e5e5", borderRadius: 10, overflow: "hidden" }}>
+          <>
+            <div
+              style={{
+                marginBottom: 12,
+                padding: "12px 12px 4px",
+                border: "1px solid #e5e5e5",
+                borderRadius: 10,
+                background: "#fafafa",
+              }}
+            >
+              <h3
+                style={{
+                  margin: "0 0 8px 0",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  flexWrap: "wrap",
+                }}
+              >
+                Trend
+                <DashboardInfoTip label="Explain daily history chart" text={dashboardTooltips.chartHistoryTrend} />
+              </h3>
+              <HistoryBorrowLiquidityChart data={historyChartData} />
+            </div>
+            <div style={{ border: "1px solid #e5e5e5", borderRadius: 10, overflow: "hidden" }}>
             <div
               style={{
                 display: "grid",
@@ -419,6 +491,7 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
+          </>
         )}
       </section>
 
@@ -427,6 +500,33 @@ export default function DashboardPage() {
           Borrow by protocol
           <DashboardInfoTip label="Explain borrow by protocol" text={dashboardTooltips.borrowByProtocol} />
         </h2>
+        {protocolChartRows.length > 0 ? (
+          <div
+            style={{
+              marginBottom: 12,
+              padding: "12px 12px 4px",
+              border: "1px solid #e5e5e5",
+              borderRadius: 10,
+              background: "#fafafa",
+            }}
+          >
+            <h3
+              style={{
+                margin: "0 0 8px 0",
+                fontSize: 14,
+                fontWeight: 600,
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                flexWrap: "wrap",
+              }}
+            >
+              Chart
+              <DashboardInfoTip label="Explain borrow by protocol chart" text={dashboardTooltips.chartBorrowProtocol} />
+            </h3>
+            <BorrowByProtocolChart rows={protocolChartRows} />
+          </div>
+        ) : null}
         <div style={{ border: "1px solid #e5e5e5", borderRadius: 10, overflow: "hidden" }}>
           <div
             style={{
@@ -466,6 +566,33 @@ export default function DashboardPage() {
           Liquidity by DEX (±100 bps, USD est.)
           <DashboardInfoTip label="Explain liquidity by DEX" text={dashboardTooltips.liquidityByDex} />
         </h2>
+        {dexChartRows.length > 0 ? (
+          <div
+            style={{
+              marginBottom: 12,
+              padding: "12px 12px 4px",
+              border: "1px solid #e5e5e5",
+              borderRadius: 10,
+              background: "#fafafa",
+            }}
+          >
+            <h3
+              style={{
+                margin: "0 0 8px 0",
+                fontSize: 14,
+                fontWeight: 600,
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                flexWrap: "wrap",
+              }}
+            >
+              Chart
+              <DashboardInfoTip label="Explain liquidity by DEX chart" text={dashboardTooltips.chartDexLiquidity} />
+            </h3>
+            <DexLiquidityChart rows={dexChartRows} />
+          </div>
+        ) : null}
         <div style={{ border: "1px solid #e5e5e5", borderRadius: 10, overflow: "hidden" }}>
           <div
             style={{
