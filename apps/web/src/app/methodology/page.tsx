@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function MethodologyPage() {
   return (
-    <main style={{ padding: 24, maxWidth: 720, lineHeight: 1.55 }}>
+    <main className="pageMainNarrow">
       <h1 style={{ marginTop: 0 }}>Methodology</h1>
       <p>
         <Link href="/dashboard">Back to dashboard</Link>

@@ -15,8 +15,8 @@ import {
 import type { BandChartRow, HistoryChartPoint, NamedUsdRow } from "../../app/dashboard/dashboardChartData";
 import { formatDepthNumber } from "../../app/dashboard/dashboardFormat";
 
-const GRID_STROKE = "#eee";
-const tickStyle = { fontSize: 11, fill: "rgba(0,0,0,0.65)" };
+const GRID_STROKE = "var(--color-border-subtle)";
+const tickStyle = { fontSize: 11, fill: "var(--color-text-muted)" };
 
 function historyTooltipFormatter(value: number, name: string): [string, string] {
   if (name === "Ratio") {

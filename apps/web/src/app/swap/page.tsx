@@ -131,8 +131,8 @@ export default function SwapPage() {
   }, [queryUrl]);
 
   return (
-    <main style={{ padding: 24 }}>
-      <h1 style={{ margin: 0, marginBottom: 16 }}>Swap Depth (Max Output)</h1>
+    <main className="pageMain">
+      <h1 style={{ margin: 0, marginBottom: "var(--space-4)" }}>Swap Depth (Max Output)</h1>
 
       <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
         <label style={{ display: "flex", flexDirection: "column", fontSize: 12 }}>
@@ -173,96 +173,106 @@ export default function SwapPage() {
         </label>
       </div>
 
-      <div style={{ opacity: 0.8, marginBottom: 24, marginTop: 8 }}>
+      <div className="pageMuted" style={{ marginBottom: "var(--space-5)", marginTop: "var(--space-2)" }}>
         Max output within the ±{bandBps / 100}% price band (directional, per pool). Totals sum across pools.
       </div>
       {loadError ? (
-        <div style={{ color: "#b00020", marginBottom: 12 }}>
+        <div style={{ color: "var(--color-error)", marginBottom: "var(--space-3)" }}>
           API error: {loadError}
         </div>
       ) : null}
 
-      <section style={{ marginTop: 16 }}>
-        <h2 style={{ margin: 0, marginBottom: 8 }}>Total max output across pools</h2>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>TokenOut</th>
-              <th style={{ textAlign: "right", borderBottom: "1px solid #ddd", padding: 8 }}>Max Output</th>
-            </tr>
-          </thead>
-          <tbody>
-            {totals.length === 0 ? (
+      <section style={{ marginTop: "var(--space-4)" }}>
+        <h2 style={{ margin: 0, marginBottom: "var(--space-2)" }}>Total max output across pools</h2>
+        <div className="pageTableShell">
+          <table className="dataTable">
+            <thead>
               <tr>
-                <td colSpan={2} style={{ padding: 8, opacity: 0.7 }}>
-                  No data for the latest snapshot.
-                </td>
+                <th>TokenOut</th>
+                <th className="dataTableNum">Max Output</th>
               </tr>
-            ) : (
-              totals.map((t) => (
-                <tr key={t.tokenOut}>
-                  <td style={{ padding: 8 }}>
-                    <span style={{ fontWeight: 500 }}>{t.symbol}</span>
-                    {t.name && t.name !== t.symbol ? (
-                      <span style={{ display: "block", opacity: 0.65, fontSize: 12 }}>{t.name}</span>
-                    ) : null}
-                    <span style={{ opacity: 0.55, fontFamily: "monospace", fontSize: 12, display: "block" }}>
-                      {t.tokenOut.slice(0, 6)}…{t.tokenOut.slice(-4)}
-                    </span>
-                  </td>
-                  <td style={{ padding: 8, textAlign: "right", fontFamily: "monospace" }}>
-                    {formatDepthNumber(t.depthBand)}
+            </thead>
+            <tbody>
+              {totals.length === 0 ? (
+                <tr>
+                  <td colSpan={2} className="pageMuted" style={{ padding: "var(--space-2)" }}>
+                    No data for the latest snapshot.
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-        <div style={{ opacity: 0.7, marginTop: 8, fontFamily: "monospace" }}>
+              ) : (
+                totals.map((t) => (
+                  <tr key={t.tokenOut}>
+                    <td style={{ padding: "var(--space-2)" }}>
+                      <span style={{ fontWeight: 500 }}>{t.symbol}</span>
+                      {t.name && t.name !== t.symbol ? (
+                        <span className="pageMuted" style={{ display: "block", fontSize: 12 }}>
+                          {t.name}
+                        </span>
+                      ) : null}
+                      <span
+                        className="pageMuted"
+                        style={{ fontFamily: "var(--font-mono)", fontSize: 12, display: "block" }}
+                      >
+                        {t.tokenOut.slice(0, 6)}…{t.tokenOut.slice(-4)}
+                      </span>
+                    </td>
+                    <td className="dataTableNum">{formatDepthNumber(t.depthBand)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="pageMuted" style={{ marginTop: "var(--space-2)", fontFamily: "var(--font-mono)", fontSize: 13 }}>
           latestTs: {latestTs ?? "null"}
         </div>
       </section>
 
-      <section style={{ marginTop: 28 }}>
-        <h2 style={{ margin: 0, marginBottom: 8 }}>Top pools by max output</h2>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Pool</th>
-              <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>TokenOut</th>
-              <th style={{ textAlign: "right", borderBottom: "1px solid #ddd", padding: 8 }}>Max Output</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pools.length === 0 ? (
+      <section style={{ marginTop: "var(--space-6)" }}>
+        <h2 style={{ margin: 0, marginBottom: "var(--space-2)" }}>Top pools by max output</h2>
+        <div className="pageTableShell">
+          <table className="dataTable">
+            <thead>
               <tr>
-                <td colSpan={3} style={{ padding: 8, opacity: 0.7 }}>
-                  No pool rows yet.
-                </td>
+                <th>Pool</th>
+                <th>TokenOut</th>
+                <th className="dataTableNum">Max Output</th>
               </tr>
-            ) : (
-              pools.map((p, idx) => (
-                <tr key={`${p.poolAddress}-${idx}`}>
-                  <td style={{ padding: 8, fontFamily: "monospace" }}>
-                    {p.dex} {p.poolAddress.slice(0, 6)}…{p.poolAddress.slice(-4)}
-                  </td>
-                  <td style={{ padding: 8 }}>
-                    <span style={{ fontWeight: 500 }}>{p.symbol}</span>
-                    {p.name && p.name !== p.symbol ? (
-                      <span style={{ display: "block", opacity: 0.65, fontSize: 12 }}>{p.name}</span>
-                    ) : null}
-                    <span style={{ opacity: 0.55, fontFamily: "monospace", fontSize: 12, display: "block" }}>
-                      {p.tokenOut.slice(0, 6)}…{p.tokenOut.slice(-4)}
-                    </span>
-                  </td>
-                  <td style={{ padding: 8, textAlign: "right", fontFamily: "monospace" }}>
-                    {formatDepthNumber(p.depthBand)}
+            </thead>
+            <tbody>
+              {pools.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="pageMuted" style={{ padding: "var(--space-2)" }}>
+                    No pool rows yet.
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                pools.map((p, idx) => (
+                  <tr key={`${p.poolAddress}-${idx}`}>
+                    <td style={{ padding: "var(--space-2)", fontFamily: "var(--font-mono)", fontSize: 13 }}>
+                      {p.dex} {p.poolAddress.slice(0, 6)}…{p.poolAddress.slice(-4)}
+                    </td>
+                    <td style={{ padding: "var(--space-2)" }}>
+                      <span style={{ fontWeight: 500 }}>{p.symbol}</span>
+                      {p.name && p.name !== p.symbol ? (
+                        <span className="pageMuted" style={{ display: "block", fontSize: 12 }}>
+                          {p.name}
+                        </span>
+                      ) : null}
+                      <span
+                        className="pageMuted"
+                        style={{ fontFamily: "var(--font-mono)", fontSize: 12, display: "block" }}
+                      >
+                        {p.tokenOut.slice(0, 6)}…{p.tokenOut.slice(-4)}
+                      </span>
+                    </td>
+                    <td className="dataTableNum">{formatDepthNumber(p.depthBand)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
     </main>
   );

@@ -1,0 +1,473 @@
+:root {
+  --color-bg-page: #f4f5f7;
+  --color-bg-card: #ffffff;
+  --color-bg-muted: #f0f1f3;
+  --color-bg-nav: #fafbfc;
+  --color-bg-chart: #fafbfc;
+  --color-border: #e2e4e8;
+  --color-border-subtle: #eceef1;
+  --color-text: #111827;
+  --color-text-muted: #5c6370;
+  --color-link: #1d4ed8;
+  --color-link-hover: #1e40af;
+  --color-row-hover: #eef0f3;
+  --color-row-stripe: #f8f9fa;
+  --color-error: #b91c1c;
+  --color-pill-stale: #fff4d6;
+  --color-pill-fresh: #e6f4ea;
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --radius-md: 10px;
+  --radius-sm: 8px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 40px;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --layout-max: 960px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--color-bg-page);
+  color: var(--color-text);
+  line-height: 1.5;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--color-link);
+}
+
+a:hover {
+  color: var(--color-link-hover);
+}
+
+/* App shell */
+.appNavHeader {
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-nav);
+}
+
+.appNavInner {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-1);
+  padding: 0 var(--space-5);
+  max-width: var(--layout-max);
+  margin: 0 auto;
+}
+
+.appNavBrand {
+  display: flex;
+  align-items: center;
+  margin-right: var(--space-3);
+  padding: var(--space-3) 0;
+}
+
+.appNavBrandLink {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.appNavBrandLink:hover {
+  color: var(--color-text);
+  opacity: 0.85;
+}
+
+.appNavLinks {
+  display: flex;
+  align-items: stretch;
+}
+
+.navLink {
+  display: flex;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  text-decoration: none;
+  color: var(--color-text-muted);
+  font-weight: 500;
+  font-size: 15px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.navLink:hover {
+  color: var(--color-text);
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.navLinkActive {
+  color: var(--color-text);
+  font-weight: 600;
+  border-bottom-color: var(--color-text);
+}
+
+.navLinkActive:hover {
+  background: transparent;
+}
+
+/* Page layout (lend, swap, methodology) */
+.pageMain {
+  padding: var(--space-5);
+  max-width: var(--layout-max);
+  margin: 0 auto;
+}
+
+.pageMainNarrow {
+  padding: var(--space-5);
+  max-width: 720px;
+  margin: 0 auto;
+  line-height: 1.55;
+}
+
+.pageMuted {
+  color: var(--color-text-muted);
+}
+
+.pageCard {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.pageTableShell {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card);
+}
+
+.pageTableHead {
+  display: grid;
+  padding: var(--space-3) var(--space-3);
+  background: var(--color-bg-muted);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.pageTableRow {
+  display: grid;
+  padding: var(--space-3) var(--space-3);
+  border-top: 1px solid var(--color-border-subtle);
+  transition: background 0.1s ease;
+}
+
+.pageTableRow:hover {
+  background: var(--color-row-hover);
+}
+
+/* Dashboard */
+.dashboardMain {
+  padding: var(--space-5);
+  max-width: var(--layout-max);
+  margin: 0 auto;
+}
+
+.dashboardLead {
+  margin-top: var(--space-2);
+  margin-bottom: var(--space-3);
+  color: var(--color-text-muted);
+  max-width: 720px;
+  line-height: 1.55;
+}
+
+.dashboardTier {
+  margin-top: var(--space-6);
+}
+
+.dashboardTierFirst {
+  margin-top: 0;
+}
+
+.dashboardTierLabel {
+  margin: 0 0 var(--space-3);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.dashboardSectionTitle {
+  margin: 0 0 var(--space-3);
+  font-size: 18px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.dashboardSubsectionTitle {
+  margin: 0 0 var(--space-3);
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.dashboardKpiGrid {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.dashboardKpiLabel {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+
+.dashboardKpiValue {
+  margin-top: var(--space-2);
+  font-size: 28px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  letter-spacing: -0.02em;
+}
+
+.dashboardKpiMeta {
+  font-size: 13px;
+  margin-top: var(--space-2);
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.dashboardCardLink {
+  text-decoration: none;
+  color: var(--color-link);
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.dashboardCardLink:hover {
+  color: var(--color-link-hover);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.dashboardCard {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-4);
+}
+
+.dashboardChartPanel {
+  margin-bottom: var(--space-3);
+  padding: var(--space-3) var(--space-3) var(--space-1);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-chart);
+  box-shadow: var(--shadow-card);
+}
+
+.dashboardChartTitle {
+  margin: 0 0 var(--space-2);
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.dashboardTableShell {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card);
+}
+
+.dashboardTableHeader {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3);
+  background: var(--color-bg-muted);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.dashboardTableRow {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3);
+  border-top: 1px solid var(--color-border-subtle);
+  font-size: 14px;
+  align-items: center;
+  transition: background 0.1s ease;
+}
+
+.dashboardTableRow:hover {
+  background: var(--color-row-hover);
+}
+
+.dashboardTableRowCompact {
+  font-size: 13px;
+}
+
+.dashboardNum {
+  font-family: var(--font-mono);
+  text-align: right;
+}
+
+.dashboardPill {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.dashboardPillStale {
+  background: var(--color-pill-stale);
+}
+
+.dashboardPillFresh {
+  background: var(--color-pill-fresh);
+}
+
+.attributionGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-5);
+}
+
+@media (min-width: 720px) {
+  .attributionGrid {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+
+.collapsibleSection {
+  margin-top: var(--space-4);
+}
+
+.collapsibleTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  max-width: 100%;
+  padding: var(--space-3) var(--space-3);
+  margin: 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-card);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+  box-shadow: var(--shadow-card);
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.collapsibleTrigger:hover {
+  background: var(--color-bg-muted);
+  border-color: var(--color-border);
+}
+
+.collapsibleChevron {
+  flex-shrink: 0;
+  width: 1.25em;
+  color: var(--color-text-muted);
+}
+
+.collapsiblePanel {
+  margin-top: var(--space-3);
+}
+
+.dashboardMorphoNote {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-3);
+}
+
+.dashboardEmpty {
+  padding: var(--space-3);
+  color: var(--color-text-muted);
+}
+
+.historyToggle {
+  margin-top: var(--space-3);
+}
+
+.historyToggleBtn {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-link);
+  background: none;
+  border: none;
+  padding: var(--space-2) 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.historyToggleBtn:hover {
+  color: var(--color-link-hover);
+}
+
+/* Swap / lend tables (native table) */
+.dataTable {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-bg-card);
+}
+
+.dataTable th,
+.dataTable td {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.dataTable thead th {
+  text-align: left;
+  font-weight: 700;
+  font-size: 13px;
+  background: var(--color-bg-muted);
+}
+
+.dataTable thead th.dataTableNum {
+  text-align: right;
+}
+
+.dataTable tbody tr:hover {
+  background: var(--color-row-hover);
+}
+
+.dataTableNum {
+  text-align: right;
+  font-family: var(--font-mono);
+}

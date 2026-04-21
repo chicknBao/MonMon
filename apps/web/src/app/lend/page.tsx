@@ -72,52 +72,58 @@ export default function LendPage() {
   }, []);
 
   if (loading) {
-    return <div style={{ padding: 24, fontFamily: "ui-sans-serif, system-ui" }}>Loading lending markets…</div>;
+    return (
+      <div className="pageMain" style={{ color: "var(--color-text-muted)" }}>
+        Loading lending markets…
+      </div>
+    );
   }
 
   if (error) {
-    return <div style={{ padding: 24, fontFamily: "ui-sans-serif, system-ui" }}>Error: {error}</div>;
+    return (
+      <div className="pageMain" style={{ color: "var(--color-error)" }}>
+        Error: {error}
+      </div>
+    );
   }
 
   const markets = data?.markets ?? [];
   const all = data?.all;
 
   return (
-    <div style={{ padding: 24, fontFamily: "ui-sans-serif, system-ui" }}>
-      <h1 style={{ margin: "0 0 8px 0" }}>Lending</h1>
-      <div style={{ marginBottom: 16, color: "rgba(0,0,0,0.65)" }}>
+    <main className="pageMain">
+      <h1 style={{ margin: "0 0 var(--space-2) 0" }}>Lending</h1>
+      <div className="pageMuted" style={{ marginBottom: "var(--space-4)" }}>
         Snapshot: {data?.latestTs ?? "—"}
       </div>
 
-      <div style={{ display: "flex", gap: 16, marginBottom: 18 }}>
-        <div style={{ flex: 1, border: "1px solid rgba(0,0,0,0.08)", borderRadius: 10, padding: 12 }}>
+      <div style={{ display: "flex", gap: "var(--space-4)", marginBottom: "var(--space-4)", flexWrap: "wrap" }}>
+        <div className="pageCard" style={{ flex: "1 1 200px", padding: "var(--space-3)" }}>
           <div style={{ fontWeight: 700, marginBottom: 4 }}>MON</div>
-          <div style={{ fontSize: 22, fontWeight: 800 }}>
+          <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "var(--font-mono)" }}>
             {all?.monUsd ? `$${formatDepthNumber(all.monUsd)}` : "—"}
           </div>
-          <div style={{ fontSize: 12, color: "rgba(0,0,0,0.6)", marginTop: 4 }}>
+          <div className="pageMuted" style={{ fontSize: 12, marginTop: 4 }}>
             Total borrowed value backed by MON collateral
           </div>
         </div>
-        <div style={{ flex: 1, border: "1px solid rgba(0,0,0,0.08)", borderRadius: 10, padding: 12 }}>
+        <div className="pageCard" style={{ flex: "1 1 200px", padding: "var(--space-3)" }}>
           <div style={{ fontWeight: 700, marginBottom: 4 }}>WMON</div>
-          <div style={{ fontSize: 22, fontWeight: 800 }}>
+          <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "var(--font-mono)" }}>
             {all?.wmonUsd ? `$${formatDepthNumber(all.wmonUsd)}` : "—"}
           </div>
-          <div style={{ fontSize: 12, color: "rgba(0,0,0,0.6)", marginTop: 4 }}>
+          <div className="pageMuted" style={{ fontSize: 12, marginTop: 4 }}>
             Total borrowed value backed by WMON collateral
           </div>
         </div>
       </div>
 
-      <div style={{ border: "1px solid rgba(0,0,0,0.08)", borderRadius: 10, overflow: "hidden" }}>
+      <div className="pageTableShell">
         <div
+          className="pageTableHead"
           style={{
             display: "grid",
             gridTemplateColumns: "1.2fr 0.9fr 0.9fr",
-            padding: "10px 12px",
-            background: "rgba(0,0,0,0.03)",
-            fontWeight: 700,
           }}
         >
           <div>Market</div>
@@ -126,21 +132,22 @@ export default function LendPage() {
         </div>
 
         {markets.length === 0 ? (
-          <div style={{ padding: 12, color: "rgba(0,0,0,0.65)" }}>No lending markets found for snapshot.</div>
+          <div className="dashboardEmpty">No lending markets found for snapshot.</div>
         ) : (
           markets.map((m) => (
             <div
               key={`${m.protocol}:${m.marketId}`}
+              className="pageTableRow"
               style={{
                 display: "grid",
                 gridTemplateColumns: "1.2fr 0.9fr 0.9fr",
-                padding: "10px 12px",
-                borderTop: "1px solid rgba(0,0,0,0.06)",
               }}
             >
               <div>
                 <div style={{ fontWeight: 800 }}>{m.protocol}</div>
-                <div style={{ fontSize: 12, color: "rgba(0,0,0,0.6)" }}>{m.marketId}</div>
+                <div className="pageMuted" style={{ fontSize: 12 }}>
+                  {m.marketId}
+                </div>
               </div>
 
               {renderCollateralSlot(m.mon)}
@@ -149,7 +156,7 @@ export default function LendPage() {
           ))
         )}
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -159,7 +166,7 @@ function renderCollateralSlot(slot: LendMarketSlot) {
       <div style={{ fontWeight: 800 }}>
         {slot.usd ? `$${formatDepthNumber(slot.usd)}` : "—"}
       </div>
-      <div style={{ fontSize: 12, color: "rgba(0,0,0,0.6)" }}>
+      <div className="pageMuted" style={{ fontSize: 12 }}>
         {slot.amount !== "0" ? (
           <>
             {formatDepthNumber(slot.amount)} {slot.loanTokenSymbol ? slot.loanTokenSymbol : ""}
