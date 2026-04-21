@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { DashboardInfoTip } from "../../components/DashboardInfoTip";
+import { dashboardTooltips } from "./dashboardTooltipCopy";
 
 const MON = "0x0000000000000000000000000000000000000000";
 const STALE_MS = 6 * 60 * 60 * 1000;
@@ -149,26 +151,52 @@ export default function DashboardPage() {
 
   return (
     <main style={{ padding: 24, maxWidth: 960 }}>
-      <h1 style={{ margin: 0 }}>Dashboard</h1>
+      <h1 style={{ margin: 0, display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+        Dashboard
+        <DashboardInfoTip label="Explain what this dashboard shows" text={dashboardTooltips.pageIntro} />
+      </h1>
       <p style={{ marginTop: 8, marginBottom: 12, color: "rgba(0,0,0,0.65)", maxWidth: 720 }}>
         MON borrowing safety snapshot: MON/WMON-backed borrows (USD) vs estimated sell-side liquidity (USD) from
         depth snapshots. See <Link href="/methodology">methodology</Link>.
       </p>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16, fontSize: 13 }}>
-        <span style={{ padding: "4px 8px", borderRadius: 6, background: lendStale ? "#fff3cd" : "#e8f5e9" }}>
+        <span
+          style={{
+            padding: "4px 8px",
+            borderRadius: 6,
+            background: lendStale ? "#fff3cd" : "#e8f5e9",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 2,
+          }}
+        >
           Lending data: {data.latestLendTs ?? "—"}
           {lendStale ? " (stale)" : ""}
+          <DashboardInfoTip label="Explain lending data timestamp" text={dashboardTooltips.staleLending} />
         </span>
-        <span style={{ padding: "4px 8px", borderRadius: 6, background: swapStale ? "#fff3cd" : "#e8f5e9" }}>
+        <span
+          style={{
+            padding: "4px 8px",
+            borderRadius: 6,
+            background: swapStale ? "#fff3cd" : "#e8f5e9",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 2,
+          }}
+        >
           Swap depth: {data.latestSwapTs ?? band100?.latestSwapTs ?? "—"}
           {swapStale ? " (stale)" : ""}
+          <DashboardInfoTip label="Explain swap depth timestamp" text={dashboardTooltips.staleSwap} />
         </span>
       </div>
 
       <section style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
         <article style={{ border: "1px solid #e5e5e5", borderRadius: 10, padding: 14 }}>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>Borrowed (MON + WMON collateral, USD)</div>
+          <div style={{ fontSize: 12, opacity: 0.7, display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
+            Borrowed (MON + WMON collateral, USD)
+            <DashboardInfoTip label="Explain borrowed total" text={dashboardTooltips.borrowedCard} />
+          </div>
           <div style={{ fontSize: 28, fontWeight: 800, marginTop: 6 }}>${formatDepthNumber(data.borrowUsdTotal)}</div>
           <div style={{ marginTop: 10, display: "flex", gap: 12, alignItems: "center" }}>
             <Link href="/lend" style={{ textDecoration: "none" }}>
@@ -178,13 +206,27 @@ export default function DashboardPage() {
         </article>
 
         <article style={{ border: "1px solid #e5e5e5", borderRadius: 10, padding: 14 }}>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>Liquidity (MON in, all DEXes, ±100 bps, USD est.)</div>
+          <div style={{ fontSize: 12, opacity: 0.7, display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
+            Liquidity (MON in, all DEXes, ±100 bps, USD est.)
+            <DashboardInfoTip label="Explain liquidity estimate" text={dashboardTooltips.liquidityCard} />
+          </div>
           <div style={{ fontSize: 28, fontWeight: 800, marginTop: 6 }}>
             ${formatDepthNumber(band100?.liquidityUsdTotal ?? "0")}
           </div>
-          <div style={{ fontSize: 13, marginTop: 6, opacity: 0.75 }}>
+          <div
+            style={{
+              fontSize: 13,
+              marginTop: 6,
+              opacity: 0.75,
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              flexWrap: "wrap",
+            }}
+          >
             Safety ratio (borrow ÷ liquidity):{" "}
             <strong>{band100?.safetyRatio != null ? formatDepthNumber(band100.safetyRatio) : "—"}</strong>
+            <DashboardInfoTip label="Explain safety ratio" text={dashboardTooltips.safetyRatio} />
           </div>
           <div style={{ marginTop: 10 }}>
             <Link href={swapMoreInfoHref(100)} style={{ textDecoration: "none" }}>
@@ -195,7 +237,10 @@ export default function DashboardPage() {
       </section>
 
       <section style={{ marginTop: 24 }}>
-        <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18 }}>Stress by price band</h2>
+        <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18, display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+          Stress by price band
+          <DashboardInfoTip label="Explain price bands" text={dashboardTooltips.stressBands} />
+        </h2>
         <div style={{ border: "1px solid #e5e5e5", borderRadius: 10, overflow: "hidden" }}>
           <div
             style={{
@@ -240,7 +285,10 @@ export default function DashboardPage() {
       </section>
 
       <section style={{ marginTop: 24 }}>
-        <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18 }}>Morpho borrower health (MON/WMON collateral markets)</h2>
+        <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18, display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+          Morpho borrower health (MON/WMON collateral markets)
+          <DashboardInfoTip label="Explain Morpho borrower health" text={dashboardTooltips.morphoSection} />
+        </h2>
         <p style={{ fontSize: 13, opacity: 0.7, marginBottom: 10 }}>
           From Morpho Blue API per-position fields. Snapshot: {morpho?.latestTs ?? "—"} · Positions:{" "}
           {morpho?.positionCount ?? 0}
@@ -288,8 +336,21 @@ export default function DashboardPage() {
                   <tr style={{ background: "#f5f5f5", textAlign: "left" }}>
                     <th style={{ padding: 8 }}>User</th>
                     <th style={{ padding: 8 }}>Loan</th>
-                    <th style={{ padding: 8 }}>HF</th>
-                    <th style={{ padding: 8 }}>Price Δ to liq.</th>
+                    <th style={{ padding: 8 }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        HF
+                        <DashboardInfoTip label="Explain health factor" text={dashboardTooltips.morphoHfColumn} />
+                      </span>
+                    </th>
+                    <th style={{ padding: 8 }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                        Price Δ to liq.
+                        <DashboardInfoTip
+                          label="Explain price move to liquidation"
+                          text={dashboardTooltips.morphoPriceVarColumn}
+                        />
+                      </span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -313,7 +374,10 @@ export default function DashboardPage() {
       </section>
 
       <section style={{ marginTop: 24 }}>
-        <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18 }}>Daily history (UTC)</h2>
+        <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18, display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+          Daily history (UTC)
+          <DashboardInfoTip label="Explain daily history table" text={dashboardTooltips.dailyHistory} />
+        </h2>
         {historyRows.length === 0 ? (
           <div style={{ padding: 12, opacity: 0.7 }}>No rollup rows yet.</div>
         ) : (
@@ -359,7 +423,10 @@ export default function DashboardPage() {
       </section>
 
       <section style={{ marginTop: 24 }}>
-        <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18 }}>Borrow by protocol</h2>
+        <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18, display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+          Borrow by protocol
+          <DashboardInfoTip label="Explain borrow by protocol" text={dashboardTooltips.borrowByProtocol} />
+        </h2>
         <div style={{ border: "1px solid #e5e5e5", borderRadius: 10, overflow: "hidden" }}>
           <div
             style={{
@@ -395,7 +462,10 @@ export default function DashboardPage() {
       </section>
 
       <section style={{ marginTop: 24 }}>
-        <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18 }}>Liquidity by DEX (±100 bps, USD est.)</h2>
+        <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18, display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+          Liquidity by DEX (±100 bps, USD est.)
+          <DashboardInfoTip label="Explain liquidity by DEX" text={dashboardTooltips.liquidityByDex} />
+        </h2>
         <div style={{ border: "1px solid #e5e5e5", borderRadius: 10, overflow: "hidden" }}>
           <div
             style={{
