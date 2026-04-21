@@ -1,10 +1,13 @@
 import type { Pool } from "pg";
 
+/** Per HF band: position count and sum of Morpho position borrowAssetsUsd (when present). */
+export type MorphoBandRollup = { count: number; borrowUsd: number };
+
 export type MorphoPositionRollup = {
   timestamp: string;
   chainId: number;
   positionCount: number;
-  histogram: Record<string, number>;
+  histogram: Record<string, MorphoBandRollup>;
   topPositions: unknown[];
 };
 

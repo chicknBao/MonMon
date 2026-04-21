@@ -1,21 +1,29 @@
 :root {
-  --color-bg-page: #f4f5f7;
+  /* Monad-adjacent: cool whites, soft blue-gray chrome, restrained blue accents */
+  --color-accent: #2563eb;
+  --color-accent-hover: #1d4ed8;
+  --color-accent-muted: #64748b;
+  --color-accent-surface: rgba(37, 99, 235, 0.06);
+  --color-accent-border: rgba(37, 99, 235, 0.12);
+
+  --color-bg-page: #f4f7fc;
   --color-bg-card: #ffffff;
-  --color-bg-muted: #f0f1f3;
-  --color-bg-nav: #fafbfc;
-  --color-bg-chart: #fafbfc;
-  --color-border: #e2e4e8;
-  --color-border-subtle: #eceef1;
-  --color-text: #111827;
-  --color-text-muted: #5c6370;
+  --color-bg-muted: #eef2f9;
+  --color-bg-nav: #fafcfe;
+  --color-bg-chart: #f7f9fd;
+  --color-border: #d5deeb;
+  --color-border-subtle: #e4ebf5;
+  --color-text: #0f172a;
+  --color-text-muted: #55647a;
   --color-link: #1d4ed8;
   --color-link-hover: #1e40af;
-  --color-row-hover: #eef0f3;
-  --color-row-stripe: #f8f9fa;
+  --color-row-hover: #e8f0fc;
+  --color-row-stripe: #f6f8fc;
   --color-error: #b91c1c;
   --color-pill-stale: #fff4d6;
-  --color-pill-fresh: #e6f4ea;
-  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --color-pill-fresh: #e8f1ff;
+  --color-kpi-value: #1c3988;
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(37, 99, 235, 0.05);
   --radius-md: 10px;
   --radius-sm: 8px;
   --space-1: 4px;
@@ -55,8 +63,9 @@ a:hover {
 
 /* App shell */
 .appNavHeader {
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-bg-nav);
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: linear-gradient(180deg, #ffffff 0%, var(--color-bg-nav) 100%);
+  box-shadow: 0 1px 0 var(--color-accent-border);
 }
 
 .appNavInner {
@@ -78,13 +87,13 @@ a:hover {
 .appNavBrandLink {
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: var(--color-text);
+  color: var(--color-accent-hover);
   text-decoration: none;
 }
 
 .appNavBrandLink:hover {
-  color: var(--color-text);
-  opacity: 0.85;
+  color: var(--color-accent);
+  opacity: 0.92;
 }
 
 .appNavLinks {
@@ -107,13 +116,13 @@ a:hover {
 
 .navLink:hover {
   color: var(--color-text);
-  background: rgba(0, 0, 0, 0.03);
+  background: var(--color-accent-surface);
 }
 
 .navLinkActive {
-  color: var(--color-text);
+  color: var(--color-accent-hover);
   font-weight: 600;
-  border-bottom-color: var(--color-text);
+  border-bottom-color: var(--color-accent);
 }
 
 .navLinkActive:hover {
@@ -143,6 +152,7 @@ a:hover {
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
+  border-top: 2px solid var(--color-accent-border);
 }
 
 .pageTableShell {
@@ -156,7 +166,7 @@ a:hover {
 .pageTableHead {
   display: grid;
   padding: var(--space-3) var(--space-3);
-  background: var(--color-bg-muted);
+  background: linear-gradient(180deg, #f1f5fc 0%, var(--color-bg-muted) 100%);
   font-weight: 700;
   font-size: 13px;
 }
@@ -201,7 +211,7 @@ a:hover {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--color-text-muted);
+  color: var(--color-accent-muted);
 }
 
 .dashboardSectionTitle {
@@ -245,6 +255,7 @@ a:hover {
   font-weight: 800;
   font-family: var(--font-mono);
   letter-spacing: -0.02em;
+  color: var(--color-kpi-value);
 }
 
 .dashboardKpiMeta {
@@ -276,6 +287,7 @@ a:hover {
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
   padding: var(--space-4);
+  border-top: 2px solid var(--color-accent-border);
 }
 
 .dashboardChartPanel {
@@ -285,6 +297,7 @@ a:hover {
   border-radius: var(--radius-md);
   background: var(--color-bg-chart);
   box-shadow: var(--shadow-card);
+  border-left: 3px solid var(--color-accent-border);
 }
 
 .dashboardChartTitle {
@@ -309,9 +322,10 @@ a:hover {
   display: grid;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-3);
-  background: var(--color-bg-muted);
+  background: linear-gradient(180deg, #f1f5fc 0%, var(--color-bg-muted) 100%);
   font-weight: 700;
   font-size: 13px;
+  color: var(--color-text);
 }
 
 .dashboardTableRow {
@@ -393,7 +407,7 @@ a:hover {
 }
 
 .collapsibleTrigger:hover {
-  background: var(--color-bg-muted);
+  background: var(--color-accent-surface);
   border-color: var(--color-border);
 }
 
@@ -456,7 +470,7 @@ a:hover {
   text-align: left;
   font-weight: 700;
   font-size: 13px;
-  background: var(--color-bg-muted);
+  background: linear-gradient(180deg, #f1f5fc 0%, var(--color-bg-muted) 100%);
 }
 
 .dataTable thead th.dataTableNum {

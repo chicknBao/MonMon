@@ -25,7 +25,10 @@ export const dashboardTooltips = {
     "Each row uses a different price band around the pool price. A smaller band (e.g. 25 bps) is stricter: less volume counts as “available” before the price moves out of range. Wider bands include more depth but are less strict.",
 
   morphoSection:
-    "Morpho-only view of borrowers in markets that use MON or WMON as collateral. Health factor (HF) is Morpho’s own risk score; lower means closer to trouble. Counts are from Morpho’s API, not other protocols.",
+    "Morpho-only view of borrowers in markets that use MON or WMON as collateral. Health factor (HF) is Morpho’s own risk score; lower means closer to trouble. Counts and borrow dollars are summed from Morpho’s API per position, not other protocols.",
+
+  morphoHistogramBorrowUsd:
+    "Per band, we add Morpho’s borrowAssetsUsd for each position in that health-factor range. If the API omits USD for a position, it contributes $0 here. This is an estimate, not advice.",
 
   morphoHfColumn:
     "Health factor: Morpho’s summary of how safe this borrow looks. Above 1 is generally farther from liquidation; exactly how it is calculated is defined by Morpho.",
@@ -46,7 +49,7 @@ export const dashboardTooltips = {
     "Visual of the same daily UTC rollup as the table: borrow dollars vs liquidity at ±100 bps, plus the ratio. Hover a point for exact values; the table lists every day.",
 
   chartMorphoDistribution:
-    "Same bucket counts as the table, shown as bars so you can see how many Morpho positions sit in each health-factor range at a glance.",
+    "Same position counts per health-factor band as the table (bars), so you can see concentration at a glance. Dollar borrow per band is in the table only.",
 
   chartStressBands:
     "Liquidity estimate per band (bars) and borrow-to-liquidity ratio (line). Tighter bands count less depth; this complements the numeric table.",

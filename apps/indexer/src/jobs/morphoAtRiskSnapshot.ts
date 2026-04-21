@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
 import type { Env } from "../config.js";
-import { upsertMorphoMarketPositionRollup } from "../repositories/morphoAtRisk.js";
+import { upsertMorphoMarketPositionRollup, type MorphoBandRollup } from "../repositories/morphoAtRisk.js";
 
 const MORPHO_GRAPHQL = "https://blue-api.morpho.org/graphql";
 const WMON = "0x3bd359c1119da7da1d913d1c4d2b7c461115433a";
@@ -12,8 +12,19 @@ type MorphoPositionItem = {
   priceVariationToLiquidationPrice: number | null;
   user: { address: string };
   market: { marketId: string; loanAsset?: { symbol?: string | null } | null };
-  state?: { borrowAssets?: unknown; collateral?: unknown } | null;
+  state?: { borrowAssets?: unknown; borrowAssetsUsd?: unknown; collateral?: unknown } | null;
 };
+
+function emptyBand(): MorphoBandRollup {
+  return { count: 0, borrowUsd: 0 };
+}
+
+function positionBorrowUsd(p: MorphoPositionItem): number {
+  const raw = p.state?.borrowAssetsUsd;
+  if (raw == null) return 0;
+  const n = Number(String(raw).replace(/,/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
 
 async function morphoGql<T>(body: Record<string, unknown>): Promise<T> {
   const res = await fetch(MORPHO_GRAPHQL, {
@@ -64,7 +75,8 @@ function bucketHf(hf: number | null | undefined): string | null {
   if (hf < 1.1) return "gte_1_05_lt_1_1";
   if (hf < 1.2) return "gte_1_1_lt_1_2";
   if (hf < 1.5) return "gte_1_2_lt_1_5";
-  return "gte_1_5";
+  if (hf < 2) return "gte_1_5_lt_2";
+  return "gte_2";
 }
 
 export async function runMorphoAtRiskSnapshot(params: { env: Env; db: Pool; snapshotTs: string }): Promise<number> {
@@ -95,7 +107,7 @@ export async function runMorphoAtRiskSnapshot(params: { env: Env; db: Pool; snap
                 priceVariationToLiquidationPrice
                 user { address }
                 market { marketId loanAsset { symbol } }
-                state { borrowAssets collateral }
+                state { borrowAssets borrowAssetsUsd collateral }
               }
             }
           }
@@ -124,20 +136,23 @@ export async function runMorphoAtRiskSnapshot(params: { env: Env; db: Pool; snap
     if (totalFetched >= MAX_POSITIONS) break;
   }
 
-  const histogram: Record<string, number> = {
-    lt_1: 0,
-    gte_1_lt_1_05: 0,
-    gte_1_05_lt_1_1: 0,
-    gte_1_1_lt_1_2: 0,
-    gte_1_2_lt_1_5: 0,
-    gte_1_5: 0,
-    unknown: 0,
+  const histogram: Record<string, MorphoBandRollup> = {
+    lt_1: emptyBand(),
+    gte_1_lt_1_05: emptyBand(),
+    gte_1_05_lt_1_1: emptyBand(),
+    gte_1_1_lt_1_2: emptyBand(),
+    gte_1_2_lt_1_5: emptyBand(),
+    gte_1_5_lt_2: emptyBand(),
+    gte_2: emptyBand(),
+    unknown: emptyBand(),
   };
 
   for (const p of positions) {
     const b = bucketHf(p.healthFactor);
-    if (b == null) histogram.unknown++;
-    else histogram[b]++;
+    const usd = positionBorrowUsd(p);
+    const slot = b == null ? histogram.unknown : histogram[b]!;
+    slot.count += 1;
+    slot.borrowUsd += usd;
   }
 
   const sorted = [...positions].sort((a, b) => (a.healthFactor ?? 999) - (b.healthFactor ?? 999));

@@ -38,7 +38,9 @@ export default function MethodologyPage() {
       <p>
         Morpho sections use Morpho Blue&apos;s GraphQL <code>marketPositions</code> fields{" "}
         <code>healthFactor</code> and <code>priceVariationToLiquidationPrice</code> as returned by their API. We only
-        include markets listed with MON or WMON as collateral asset, then aggregate counts into bands.
+        include markets listed with MON or WMON as collateral asset, then aggregate counts into bands (including a
+        separate band for health factor above 2). Where available, we also sum each position&apos;s{" "}
+        <code>borrowAssetsUsd</code> into those bands for a coarse dollar view.
       </p>
 
       <h2>What we do not model</h2>

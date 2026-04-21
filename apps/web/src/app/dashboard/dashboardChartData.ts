@@ -5,6 +5,8 @@ export const MORPHO_HISTOGRAM_KEY_ORDER = [
   "gte_1_05_lt_1_1",
   "gte_1_1_lt_1_2",
   "gte_1_2_lt_1_5",
+  "gte_1_5_lt_2",
+  "gte_2",
   "gte_1_5",
   "unknown",
 ] as const;
@@ -15,9 +17,35 @@ export const MORPHO_HISTOGRAM_LABELS: Record<string, string> = {
   gte_1_05_lt_1_1: "1.05 – 1.1",
   gte_1_1_lt_1_2: "1.1 – 1.2",
   gte_1_2_lt_1_5: "1.2 – 1.5",
-  gte_1_5: "≥ 1.5",
+  gte_1_5_lt_2: "1.5 – 2.0",
+  gte_2: "≥ 2",
+  gte_1_5: "≥ 1.5 (legacy bucket)",
   unknown: "Unknown HF",
 };
+
+/** Per-band stats from indexer (new) or legacy count-only histogram from DB. */
+export type MorphoBandStats = { count: number; borrowUsd: number };
+
+/** Accepts new `{ count, borrowUsd }` values or legacy plain number counts. */
+export function normalizeMorphoHistogram(raw: unknown): Record<string, MorphoBandStats> | null {
+  if (raw == null || typeof raw !== "object") return null;
+  const src = raw as Record<string, unknown>;
+  const out: Record<string, MorphoBandStats> = {};
+  for (const [k, v] of Object.entries(src)) {
+    if (typeof v === "number" && Number.isFinite(v)) {
+      out[k] = { count: v, borrowUsd: 0 };
+    } else if (v != null && typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      const count = Number(o.count);
+      const borrowUsd = Number(o.borrowUsd ?? 0);
+      out[k] = {
+        count: Number.isFinite(count) ? count : 0,
+        borrowUsd: Number.isFinite(borrowUsd) ? borrowUsd : 0,
+      };
+    }
+  }
+  return Object.keys(out).length ? out : null;
+}
 
 export type HistoryChartPoint = {
   day: string;
@@ -48,8 +76,10 @@ export function buildHistoryChartData(
 }
 
 /** Keys present in histogram, in canonical order, then any extra keys. */
-export function orderedMorphoHistogramEntries(histogram: Record<string, number>): [string, number][] {
-  const out: [string, number][] = [];
+export function orderedMorphoHistogramEntries(
+  histogram: Record<string, MorphoBandStats>,
+): [string, MorphoBandStats][] {
+  const out: [string, MorphoBandStats][] = [];
   const seen = new Set<string>();
   for (const k of MORPHO_HISTOGRAM_KEY_ORDER) {
     if (Object.prototype.hasOwnProperty.call(histogram, k)) {

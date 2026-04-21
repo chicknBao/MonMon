@@ -17,6 +17,7 @@ import {
   buildHistoryChartData,
   buildProtocolChartRows,
   MORPHO_HISTOGRAM_LABELS,
+  normalizeMorphoHistogram,
   orderedMorphoHistogramEntries,
 } from "./dashboardChartData";
 import { formatDepthNumber } from "./dashboardFormat";
@@ -44,7 +45,8 @@ type DashboardMetrics = {
 type MorphoAtRiskResponse = {
   latestTs: string | null;
   positionCount: number;
-  histogram: Record<string, number> | null;
+  /** New shape: `{ count, borrowUsd }` per key; legacy: number counts only. */
+  histogram: Record<string, unknown> | null;
   topPositions: Array<{
     user?: string;
     marketId?: string;
@@ -79,6 +81,7 @@ function swapMoreInfoHref(bandBps: number) {
 
 const grid4 = { gridTemplateColumns: "auto 1fr 1fr 1fr" } as const;
 const grid2 = { gridTemplateColumns: "1fr auto" } as const;
+const gridMorphoHist = { gridTemplateColumns: "1fr auto auto" } as const;
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -156,10 +159,11 @@ export default function DashboardPage() {
         .sort((a, b) => Number(b.usd) - Number(a.usd))
     : [];
 
-  const morphoHistEntries = morpho?.histogram ? orderedMorphoHistogramEntries(morpho.histogram) : [];
-  const morphoHistChartData = morphoHistEntries.map(([k, v]) => ({
+  const morphoHistNormalized = normalizeMorphoHistogram(morpho?.histogram ?? null);
+  const morphoHistEntries = morphoHistNormalized ? orderedMorphoHistogramEntries(morphoHistNormalized) : [];
+  const morphoHistChartData = morphoHistEntries.map(([k, s]) => ({
     label: MORPHO_HISTOGRAM_LABELS[k] ?? k,
-    count: v,
+    count: s.count,
   }));
   const historyChartData = buildHistoryChartData(historyRows);
   const bandChartRows = buildBandChartRows(data.bands);
@@ -413,15 +417,32 @@ export default function DashboardPage() {
                 </h3>
                 <MorphoHistogramChart data={morphoHistChartData} />
               </div>
-              <div className="dashboardTableShell" style={{ flex: "1 1 220px", minWidth: 0 }}>
-                <div className="dashboardTableHeader" style={grid2}>
+              <div className="dashboardTableShell" style={{ flex: "1 1 280px", minWidth: 0 }}>
+                <div className="dashboardTableHeader" style={gridMorphoHist}>
                   <div>Health factor band</div>
-                  <div className="dashboardNum">Count</div>
+                  <div className="dashboardNum">Positions</div>
+                  <div className="dashboardNum">
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        justifyContent: "flex-end",
+                      }}
+                    >
+                      Borrow (USD)
+                      <DashboardInfoTip
+                        label="Explain borrow USD per HF band"
+                        text={dashboardTooltips.morphoHistogramBorrowUsd}
+                      />
+                    </span>
+                  </div>
                 </div>
-                {morphoHistEntries.map(([k, v]) => (
-                  <div key={k} className="dashboardTableRow" style={grid2}>
+                {morphoHistEntries.map(([k, s]) => (
+                  <div key={k} className="dashboardTableRow" style={gridMorphoHist}>
                     <div>{MORPHO_HISTOGRAM_LABELS[k] ?? k}</div>
-                    <div className="dashboardNum">{v}</div>
+                    <div className="dashboardNum">{s.count}</div>
+                    <div className="dashboardNum">${formatDepthNumber(s.borrowUsd)}</div>
                   </div>
                 ))}
               </div>
