@@ -7,6 +7,7 @@ const links = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/swap", label: "Swap" },
   { href: "/lend", label: "Lend" },
+  { href: "/methodology", label: "Methodology" },
 ] as const;
 
 export function AppNav() {

@@ -105,6 +105,31 @@ CREATE INDEX IF NOT EXISTS idx_lend_market_collateral_snapshots_protocol_ts
 CREATE INDEX IF NOT EXISTS idx_lend_market_collateral_snapshots_collateral_ts
   ON lend_market_collateral_snapshots (collateral_token, ts DESC);
 
+-- Morpho Blue: aggregated borrower health / liquidation proximity (indexer snapshot).
+CREATE TABLE IF NOT EXISTS morpho_market_position_rollups (
+  ts TIMESTAMPTZ NOT NULL,
+  chain_id INT NOT NULL,
+  position_count INT NOT NULL,
+  histogram JSONB NOT NULL,
+  top_positions JSONB NOT NULL,
+  PRIMARY KEY (ts, chain_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_morpho_position_rollups_chain_ts
+  ON morpho_market_position_rollups (chain_id, ts DESC);
+
+-- Daily headline rollups for dashboard history (UTC date).
+CREATE TABLE IF NOT EXISTS dashboard_daily_rollups (
+  day DATE NOT NULL,
+  borrow_usd_total NUMERIC,
+  liquidity_usd_band_25 NUMERIC,
+  liquidity_usd_band_100 NUMERIC,
+  liquidity_usd_band_500 NUMERIC,
+  ratio_band_100 NUMERIC,
+  morpho_histogram JSONB,
+  PRIMARY KEY (day)
+);
+
 -- Convert to hypertables (idempotent) when TimescaleDB is available.
 DO $$
 BEGIN
@@ -114,6 +139,7 @@ BEGIN
     PERFORM create_hypertable('pool_swap_depth_snapshots', 'ts', if_not_exists => TRUE);
     PERFORM create_hypertable('token_top_n', 'ts', if_not_exists => TRUE);
     PERFORM create_hypertable('lend_market_collateral_snapshots', 'ts', if_not_exists => TRUE);
+    PERFORM create_hypertable('morpho_market_position_rollups', 'ts', if_not_exists => TRUE);
   END IF;
 END $$;
 

@@ -73,6 +73,24 @@ export default function SwapPage() {
   const [pools, setPools] = useState<PoolRow[]>([]);
   const [latestTs, setLatestTs] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    const d = sp.get("dex");
+    if (d && (dexOptions as readonly string[]).includes(d)) setDex(d);
+    const ti = sp.get("tokenIn");
+    if (ti) {
+      const lower = ti.toLowerCase();
+      const match = tokenInOptions.find((x) => x.address.toLowerCase() === lower);
+      if (match) setTokenIn(match.address);
+    }
+    const bb = sp.get("bandBps");
+    if (bb) {
+      const n = Number(bb);
+      if (Number.isFinite(n) && bandOptions.includes(n)) setBandBps(n);
+    }
+  }, []);
+
   const queryUrl = useMemo(() => {
     const limitTokens = dex === "all" ? "100" : "20";
     const limitPools = dex === "all" ? "200" : "50";

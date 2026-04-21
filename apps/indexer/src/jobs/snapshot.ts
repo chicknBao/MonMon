@@ -7,6 +7,10 @@ import { runLfjDepthSnapshot } from "../dexes/lfj.js";
 import { runPancakeDepthSnapshot } from "../dexes/pancake.js";
 import { runBalancerDepthSnapshot } from "../dexes/balancer.js";
 import { runLendingSnapshot } from "./lendingSnapshot.js";
+import { runMorphoAtRiskSnapshot } from "./morphoAtRiskSnapshot.js";
+import { runDashboardRollup } from "./dashboardRollup.js";
+import { runNeverlandSchemaProbe } from "./neverlandSchemaProbe.js";
+import { runCurvanceDebtCapProbe } from "./curvanceDebtCapProbe.js";
 
 export async function runSnapshot(params: { env: Env; db: Pool }) {
   const { env, db } = params;
@@ -53,6 +57,30 @@ export async function runSnapshot(params: { env: Env; db: Pool }) {
     await runLendingSnapshot({ env, db, snapshotTs });
   } catch (err) {
     console.error("snapshot: lending failed", err);
+  }
+
+  try {
+    await runMorphoAtRiskSnapshot({ env, db, snapshotTs });
+  } catch (err) {
+    console.error("snapshot: morpho-at-risk failed", err);
+  }
+
+  try {
+    await runDashboardRollup({ env, db, snapshotTs });
+  } catch (err) {
+    console.error("snapshot: dashboard rollup failed", err);
+  }
+
+  try {
+    await runNeverlandSchemaProbe(env);
+  } catch (err) {
+    console.error("snapshot: neverland probe failed", err);
+  }
+
+  try {
+    await runCurvanceDebtCapProbe({ env, db });
+  } catch (err) {
+    console.error("snapshot: curvance probe failed", err);
   }
 }
 
